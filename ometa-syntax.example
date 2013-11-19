@@ -1,0 +1,67 @@
+;;; Racket interface
+;;; `define-ometa'               to define new grammar
+;;; `(ometa-match G rule input)' to match against the input
+
+;; simple arithmetic calculator recognizer
+;; no semantic actions
+;; =======================================
+ometa L {
+  number   = digit+,
+  addExpr  = addExpr '+' mulExpr
+           | addExpr '-' mulExpr
+           | mulExpr,
+  mulExpr  = mulExpr '*' primExpr
+           | mulExpr '/' primExpr
+           | primExpr,
+  primExpr = '(' expr ')'
+           | number,
+  expr     = addExpr
+}
+
+(define-ometa (L Parent)
+       (== number       (+ (^ digit)))
+
+       (== addExpr      ((and addExpr "+" mulExpr))
+                        ((and addExpr "-" mulExpr))
+                        (mulExpr))
+
+       (== mulExpr      ((and mulExpr "*" primExpr))
+                        ((and mulExpr "/" primExpr))
+                        (primExpr))
+
+       (== primExpr     ((and "(" expr ")"))
+                        (number))
+
+       (== expr         (addExpr)))
+
+
+;; flatten a list
+;; (1 (2 (3 4)) (((5)) 6)) -> (1 2 3 4 5 6)
+;; =========================================
+ometa F {
+    flatten =  (inside:xs)           -> xs,
+    inside  =  (inside:xs) inside:ys -> (append xs ys),
+            | :x inside:xs           -> (cons x xs),
+            | ( )                    -> nil
+ }
+
+(define-ometa (F Parent)
+       (== flatten      ((list (: xs inside))                            (-> xs)))
+
+       (== inside       ((and (list (: xs inside)) (: ys inside))        (-> (append xs ys)))
+                        ((and (: x) (: xs inside))                       (-> (cons x xs)))
+                        ((list)                                          (-> nil))))
+
+
+;; lower-case letter recognizer
+;; =======================================
+ometa C {
+  cRange :x :y = char:c ?(c >= x) ?(c <= y)      -> c
+  lowerCase    = charRange(’a’, ’z’)
+}
+
+(define-ometa (C Parent)
+       (== (cRange (: x) (: y))         ((: c char) (? (char>=? c x)) 
+                                                    (? (char<=? c y))   (-> c)))
+
+       (== lowerCase                    ((cRange #\a #\z))))

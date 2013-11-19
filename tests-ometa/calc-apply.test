@@ -1,0 +1,8 @@
+ometa CalcCompiler {
+  comp = (anything:t apply(t):ans) -> ans,
+  num  = anything:x                -> 'x
+  add  = comp:x comp:y             -> `(+ ,x ,y)
+  sub  = comp:x comp:y             -> `(- ,x ,y)
+  mul  = comp:x comp:y             -> `(* ,x ,y)
+  div  = comp:x comp:y             -> `(/ ,x ,y)
+}

@@ -1,0 +1,1 @@
+(mul (num 6) (add (num 4) (num 3)))
