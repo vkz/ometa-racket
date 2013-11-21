@@ -1,29 +1,73 @@
 #lang racket
 
-(require racket/match)
+;; e ==(empty)
+;;     (atom a)
+;;     (apply A)
+;;     (seq e1 e2)
+;;     (alt e1 e2)
+;;     (many e)
+;;     (~ e)
+;;     (bind x e)
+;;     (-> t)
+;;     ( e )
 
-(define CORE-OMETA core-ometa)
+;; Value == a
+;;         (Value ...)
+;;          none
+
+;; Stream == Value ...
+
+(define (interp omprog start input store)
+  ;; -> Value
+  (define stream (construct-stream input))
+  (define fresh-store (lambda () '()))
+  (define rules (append omprog '()))
+  (define find-rule-by-name (lambda (name) (cadr (assoc name rules))))
+  (define exp-name car)
 
 
-(core
- (EMPTY)
- (ATOM (or/c char? number? string?))
- (NT string?)
- (AND core? core?)
- (OR core? core?)
- (MANY core?)
- (NOT core?)
- (BIND string? core? )
- (ACTION term?)
- (LIST core?))
+  (define (rule-apply name stream store)
+    (reverse
+     (cons store
+           (cdr (reverse
+                 (cond
+                  ((equal? name 'anything)     (anything stream (fresh-store)))
+                  ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
+                  (else                        (error "no such rule " name))))))))
 
-(value
- (ATOM (or/c char? number? string?))
- (LIST (MANY value?))
- (NONE))
+  (define (anything stream store)
+    (if (empty? stream)
+        (list 'FAIL stream store)
+        (list (car stream) (cdr stream) store)))
 
-(term
- (ATOM )
- (LIST (MANY term?))
- (NONE)
- (ID string?))
+
+  (define (e exp stream store)
+    (case (exp-name exp)
+      ((apply) (rule-apply (cadr exp) stream store))
+      ((empty) (list 'NONE stream store))
+      ((seq) (match (e (second exp) stream store)
+               [(list 'FAIL s st) (list 'FAIL stream st)]
+               [(list  val  s st) (e (third exp) s st)]))
+
+      ))
+
+  (e `(apply ,start) stream store))
+
+(define (construct-stream input)
+  (cond
+   [(string? input)
+    (build-list (string-length input)
+                (lambda (n) (list n (string-ref input n))))]
+   [(list? input)
+    (build-list (length input)
+                (lambda (n) (list n (list-ref input n))))]
+   [(vector? input)
+    (build-list (vector-length input)
+                (lambda (n) (list n (vector-ref input n))))]))
+
+(define testprog
+  `((A (apply B))
+    (B (seq (apply anything) (apply C)))
+    (C (seq (apply anything) (apply anything)))))
+
+(interp testprog 'A "he" '((x 0)))
