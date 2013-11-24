@@ -40,7 +40,6 @@
         (list 'FAIL stream store)
         (list (car stream) (cdr stream) store)))
 
-
   (define (e exp stream store)
     (case (exp-name exp)
       ((apply) (rule-apply (cadr exp) stream store))
