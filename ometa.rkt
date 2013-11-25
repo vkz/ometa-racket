@@ -69,6 +69,9 @@
                  [(list v1 s1 st1) (match (e `(many1 ,(second exp)) s1 st1)
                                      [(list v-rest s-rest st-rest)
                                       (list (append `(,v1) v-rest) s-rest st-rest)])]))
+      ((~) (match (e (second exp) stream store)
+             [(list 'FAIL s st) (list 'NONE stream st)]
+             [(list _ s st) (list 'FAIL stream st)]))
 
       ))
 
@@ -93,6 +96,7 @@
     (B (seq (atom #\h) (apply C)))
     (C (seq (alt (atom #\E) (atom #\e))
             (apply D)))
-    (D (seq (many (atom #\l)) (apply anything)))))
+    (D (seq (many (atom #\l)) (~ (~ (alt (atom #\a)
+                                         (atom #\b))))))))
 
 (interp testprog 'A "hello" '((x 0)))
