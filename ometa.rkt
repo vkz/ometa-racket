@@ -47,10 +47,23 @@
       ((seq) (match (e (second exp) stream store)
                [(list 'FAIL s st) (list 'FAIL stream st)]
                [(list  val  s st) (e (third exp) s st)]))
+      ((atom) (begin
+                (define a? (lambda (b) (equal? b (cadr exp))))
+                (define not-a? (lambda (b) (not (a? b))))
+                (define val (e `(apply anything) stream store))
+                (printf "Matching ~a~n" val)
+                (match val
+                  [(list 'FAIL s st)               (begin (displayln 1) (list 'FAIL stream store))]
+                  [(list 'NONE s st)               (begin (displayln 2) (list 'FAIL stream store))]
+                  [(list `(,pos `(,__)) s st)      (begin (displayln 3) (list 'FAIL stream store))]
+                  [(list `(,pos ,(? not-a?)) s st) (begin (displayln 4) (list 'FAIL stream store))]
+                  [(list `(,pos ,(? a? b )) s st)  (begin (displayln 5))(list b s st)])))
 
       ))
 
-  (e `(apply ,start) stream store))
+  (match (e `(apply ,start) stream store)
+    [(list 'FAIL s st) (list 'FAIL stream st)]
+    [result result ]))
 
 (define (construct-stream input)
   (cond
@@ -66,7 +79,7 @@
 
 (define testprog
   `((A (apply B))
-    (B (seq (apply anything) (apply C)))
-    (C (seq (apply anything) (apply anything)))))
+    (B (seq (atom #\h) (apply C)))
+    (C (seq (atom #\e) (apply anything)))))
 
-(interp testprog 'A "he" '((x 0)))
+(interp testprog 'A "hel" '((x 0)))
