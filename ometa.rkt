@@ -29,11 +29,13 @@
   (define (rule-apply name stream store)
     (reverse
      (cons store
-           (cdr (reverse
-                 (cond
-                  ((equal? name 'anything)     (anything stream (fresh-store)))
-                  ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
-                  (else                        (error "no such rule " name))))))))
+           (cdr (let (( r (reverse
+                           (cond
+                            ((equal? name 'anything)     (anything stream (fresh-store)))
+                            ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
+                            (else                        (error "no such rule " name))))))
+                  (printf "Apply ~a: ~a~n" name (car r))
+                  r)))))
 
   (define (anything stream store)
     (if (empty? stream)
@@ -72,6 +74,9 @@
       ((~) (match (e (second exp) stream store)
              [(list 'FAIL s st) (list 'NONE stream st)]
              [(list _ s st) (list 'FAIL stream st)]))
+      ((bind) (match (e (third exp) stream store)
+                [(list 'FAIL s st) (list 'FAIL stream st)]
+                [(list val s st) (list val s (cons (list (second exp) val) st))]))
 
       ))
 
@@ -80,23 +85,33 @@
     [result result ]))
 
 (define (construct-stream input)
-  (cond
-   [(string? input)
-    (build-list (string-length input)
-                (lambda (n) (list n (string-ref input n))))]
-   [(list? input)
-    (build-list (length input)
-                (lambda (n) (list n (list-ref input n))))]
-   [(vector? input)
-    (build-list (vector-length input)
-                (lambda (n) (list n (vector-ref input n))))]))
+  (apply build-list
+         (match  (cond
+                  [(string? input) (list string-length string-ref)]
+                  [(list? input)   (list length list-ref)]
+                  [(vector? input) (list vector-length vector-ref)])
+           [(list len ref)
+            (list (len input) (lambda (n) (list n (ref input n))))])))
 
 (define testprog
   `((A (apply B))
     (B (seq (atom #\h) (apply C)))
     (C (seq (alt (atom #\E) (atom #\e))
             (apply D)))
-    (D (seq (many (atom #\l)) (~ (~ (alt (atom #\a)
+    (D (seq (bind 'l (many (atom #\l))) (~ (~ (alt (atom #\o)
                                          (atom #\b))))))))
 
-(interp testprog 'A "hello" '((x 0)))
+(interp testprog 'A "helmo" '((x 0)))
+
+
+;; (define (construct-stream input)
+;;   (cond
+;;    [(string? input)
+;;     (build-list (string-length input)
+;;                 (lambda (n) (list n (string-ref input n))))]
+;;    [(list? input)
+;;     (build-list (length input)
+;;                 (lambda (n) (list n (list-ref input n))))]
+;;    [(vector? input)
+;;     (build-list (vector-length input)
+;;                 (lambda (n) (list n (vector-ref input n))))]))
