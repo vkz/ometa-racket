@@ -57,7 +57,18 @@
                   [(list 'NONE s st)               (begin (displayln 2) (list 'FAIL stream store))]
                   [(list `(,pos `(,__)) s st)      (begin (displayln 3) (list 'FAIL stream store))]
                   [(list `(,pos ,(? not-a?)) s st) (begin (displayln 4) (list 'FAIL stream store))]
-                  [(list `(,pos ,(? a? b )) s st)  (begin (displayln 5))(list b s st)])))
+                  [(list `(,pos ,(? a? b )) s st)  (begin (displayln 5))(list `(,pos ,b) s st)])))
+      ((alt) (match (e (second exp) stream store)
+               [(list 'FAIL s st) (e (third exp) stream st)]
+               [result result]))
+      ((many) (match (e (second exp) stream store)
+                [(list 'FAIL s st) (list 'FAIL stream st)] ;; try e -> if 'FAIL then e* failed
+                [_ (e `(many1 ,(second exp)) stream store)]))
+      ((many1) (match (e (second exp) stream store)
+                 [(list 'FAIL s1 st1) (list '() stream st1)]
+                 [(list v1 s1 st1) (match (e `(many1 ,(second exp)) s1 st1)
+                                     [(list v-rest s-rest st-rest)
+                                      (list (append `(,v1) v-rest) s-rest st-rest)])]))
 
       ))
 
@@ -80,6 +91,8 @@
 (define testprog
   `((A (apply B))
     (B (seq (atom #\h) (apply C)))
-    (C (seq (atom #\e) (apply anything)))))
+    (C (seq (alt (atom #\E) (atom #\e))
+            (apply D)))
+    (D (seq (many (atom #\l)) (apply anything)))))
 
-(interp testprog 'A "hel" '((x 0)))
+(interp testprog 'A "hello" '((x 0)))
