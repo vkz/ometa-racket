@@ -17,6 +17,13 @@
 
 ;; Stream == Value ...
 
+;; reflective hook to reel the module namespace
+;; would need to insert this into module with
+;; ometa user-code so that `eval' can see top-level bindings
+(define-namespace-anchor a)
+(define ns (namespace-anchor->namespace a))
+
+
 (define (interp omprog start input store)
   ;; -> Value
   (define stream (construct-stream input))
@@ -34,13 +41,22 @@
                             ((equal? name 'anything)     (anything stream (fresh-store)))
                             ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
                             (else                        (error "no such rule " name))))))
-                  (printf "Apply ~a: ~a~n" name (car r))
+                  (unless (equal? name 'anything)
+                    (printf "~a binds: ~a~n" name (car r)))
                   r)))))
 
   (define (anything stream store)
     (if (empty? stream)
         (list 'FAIL stream store)
         (list (car stream) (cdr stream) store)))
+
+  (define (de-pos binding)
+    (match binding
+      [(list id (list (list pos v) ...)) `(,id (quote ,v))]
+      [(list id (list pos v)) (list id v)]))
+
+  (define (store->env a-list)
+    (map de-pos a-list))
 
   (define (e exp stream store)
     (case (exp-name exp)
@@ -77,9 +93,19 @@
       ((bind) (match (e (third exp) stream store)
                 [(list 'FAIL s st) (list 'FAIL stream st)]
                 [(list val s st) (list val s (cons (list (second exp) val) st))]))
-
+      ((->)   (begin
+                ;; capturing the right name-space for eval is crazy
+                ;; this here is a temporary hack and has to go
+                ;; we should be capturing user ometa-code name-space
+                (define env (store->env store))
+                (define code (second exp))
+                (define result (eval `(let* ,(reverse env)
+                                        ,code)
+                                     ns))
+                (list (list +inf.0 result)
+                      stream
+                      store)))
       ))
-
   (match (e `(apply ,start) stream store)
     [(list 'FAIL s st) (list 'FAIL stream st)]
     [result result ]))
@@ -93,15 +119,31 @@
            [(list len ref)
             (list (len input) (lambda (n) (list n (ref input n))))])))
 
-(define testprog
-  `((A (apply B))
-    (B (seq (atom #\h) (apply C)))
-    (C (seq (alt (atom #\E) (atom #\e))
-            (apply D)))
-    (D (seq (bind 'l (many (atom #\l))) (~ (~ (alt (atom #\o)
-                                         (atom #\b))))))))
 
-(interp testprog 'A "helmo" '((x 0)))
+(define testprog
+  `((A (seq (bind h (atom #\h))
+            (seq (seq (bind e (apply C))
+                      (bind ll (apply B)))
+                 (-> (begin
+                       (printf "AAA:~v~n" e)
+                       (list h e ll))))))
+    (B (many (atom #\l)))
+    (C (seq (bind e (alt (atom #\E) (atom #\e)))
+            (-> (begin
+                  (printf "Matched e:~v\n" (list e #\E))
+                  (list e #\E)))))
+    (D (empty))))
+
+;; (define testprog
+;;   `((A (seq (bind h (atom #\h))
+;;             (seq (seq (bind e (apply C))
+;;                       (bind ll (apply B)))
+;;                  (-> (list h e ll)))))
+;;     (B (many (atom #\l)))
+;;     (C (alt (atom #\E) (atom #\e)))
+;;     (D (empty))))
+
+(interp testprog 'A "hello" '())
 
 
 ;; (define (construct-stream input)
