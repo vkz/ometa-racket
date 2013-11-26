@@ -85,7 +85,7 @@
                [(list 'FAIL s st) (e (third exp) stream st)]
                [result result]))
       ((many) (match (e (second exp) stream store)
-                [(list 'FAIL s st) (list 'FAIL stream st)] ;; try e -> if 'FAIL then e* failed
+                [(list 'FAIL s st) (list '() stream st)] ;; try e -> if 'FAIL then return '()
                 [_ (e `(many1 ,(second exp)) stream store)]))
       ((many1) (match (e (second exp) stream store)
                  [(list 'FAIL s1 st1) (list '() stream st1)]
@@ -142,20 +142,13 @@
             (list (len input) (lambda (n) (list n (ref input n))))])))
 
 
-;; FAILS because of incorrect e* (many) implementation
-;; see commented test below
+
 (define testprog
   `((A (seq (atom #\h)
             (list (seq (atom #\e)
                        (many (atom #\l))))))))
+
 (define input (list #\h `(,@(string->list "e")) #\o))
-
-
-;; ;; FAILS because many appears to act like many+
-;; ;; demanding at least one match
-;; (define testprog `((A (seq (atom #\e) (many (atom #\l))))))
-;; (define input "e")
-
 
 (printf "Input: ~v\n" input)
 (printf "Stream: ~v\n" (construct-stream input))
