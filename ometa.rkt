@@ -1,5 +1,10 @@
 #lang racket
 
+;; TODO:
+;; - stream constructors
+;; - tests for each e-case
+;; - de-pos values
+
 ;; e ==(empty)
 ;;     (atom a)
 ;;     (apply A)
@@ -9,7 +14,7 @@
 ;;     (~ e)
 ;;     (bind x e)
 ;;     (-> t)
-;;     ( e )
+;;     (list e )
 
 ;; Value == a
 ;;         (Value ...)
@@ -18,8 +23,8 @@
 ;; Stream == Value ...
 
 ;; reflective hook to reel the module namespace
-;; would need to insert this into module with
-;; ometa user-code so that `eval' can see top-level bindings
+;; must insert this into user-code before interpreting
+;; otherwise `eval' won't have bindings from user top-level
 (define-namespace-anchor a)
 (define ns (namespace-anchor->namespace a))
 
@@ -59,6 +64,7 @@
     (map de-pos a-list))
 
   (define (e exp stream store)
+    ;; -> ((pos value) stream store)
     (case (exp-name exp)
       ((apply) (rule-apply (cadr exp) stream store))
       ((empty) (list 'NONE stream store))
@@ -101,6 +107,26 @@
                 (list (list +inf.0 result)
                       stream
                       store)))
+
+      ((list) (begin
+                (define temprule (gensym "RULE"))
+                (define list-pattern (second exp))
+                (define subprog `((,temprule ,list-pattern)))
+                (printf "Subprog: ~v\n" subprog)
+                (match (car stream)
+                  [(list pos (? list? subinput))
+                   (begin (printf "LIST PAT\n")
+                          (printf "Sub-input: ~v\n" subinput)
+                          (printf "Sub-stream: ~v\n" (construct-stream subinput))
+                          (match (interp subprog temprule subinput store)
+                            [(list 'FAIL s st) (begin (printf "List subpat FAIL\n")
+                                                      (list 'FAIL stream st))]
+                            [(list val s st) (if (empty? s) ;list-pattern must match entire input list
+                                                 (list (list +inf.0 subinput) (cdr stream) st)
+                                                 (list 'FAIL stream st))]))]
+                  [else (begin (printf "Sub-stream not a list\n")
+                               (list 'FAIL stream store))])))
+
       ))
   (match (e `(apply ,start) stream store)
     [(list 'FAIL s st) (list 'FAIL stream st)]
@@ -116,17 +142,38 @@
             (list (len input) (lambda (n) (list n (ref input n))))])))
 
 
+;; FAILS because of incorrect e* (many) implementation
+;; see commented test below
 (define testprog
-  `((A (seq (bind h (atom #\h))
-            (seq (seq (bind e (apply C))
-                      (bind ll (apply B)))
-                 (-> (begin
-                       (list h e ll))))))
-    (B (many (atom #\l)))
-    (C (seq (bind e (alt (atom #\E) (atom #\e)))
-            (-> (begin
-                  (list e #\E)))))
-    (D (empty))))
+  `((A (seq (atom #\h)
+            (list (seq (atom #\e)
+                       (many (atom #\l))))))))
+(define input (list #\h `(,@(string->list "e")) #\o))
+
+
+;; ;; FAILS because many appears to act like many+
+;; ;; demanding at least one match
+;; (define testprog `((A (seq (atom #\e) (many (atom #\l))))))
+;; (define input "e")
+
+
+(printf "Input: ~v\n" input)
+(printf "Stream: ~v\n" (construct-stream input))
+
+(interp testprog 'A input '())
+
+
+;; (define testprog
+;;   `((A (seq (bind h (atom #\h))
+;;             (seq (seq (bind e (apply C))
+;;                       (bind ll (apply B)))
+;;                  (-> (begin
+;;                        (list h e ll))))))
+;;     (B (many (atom #\l)))
+;;     (C (seq (bind e (alt (atom #\E) (atom #\e)))
+;;             (-> (begin
+;;                   (list e #\E)))))
+;;     (D (empty))))
 
 ;; (define testprog
 ;;   `((A (seq (bind h (atom #\h))
@@ -136,18 +183,3 @@
 ;;     (B (many (atom #\l)))
 ;;     (C (alt (atom #\E) (atom #\e)))
 ;;     (D (empty))))
-
-(interp testprog 'A "hello" '())
-
-
-;; (define (construct-stream input)
-;;   (cond
-;;    [(string? input)
-;;     (build-list (string-length input)
-;;                 (lambda (n) (list n (string-ref input n))))]
-;;    [(list? input)
-;;     (build-list (length input)
-;;                 (lambda (n) (list n (list-ref input n))))]
-;;    [(vector? input)
-;;     (build-list (vector-length input)
-;;                 (lambda (n) (list n (vector-ref input n))))]))
