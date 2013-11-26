@@ -42,7 +42,7 @@
                             ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
                             (else                        (error "no such rule " name))))))
                   (unless (equal? name 'anything)
-                    (printf "~a binds: ~a~n" name (car r)))
+                    (printf "~a BINDS: ~v~n" name (car r)))
                   r)))))
 
   (define (anything stream store)
@@ -53,7 +53,7 @@
   (define (de-pos binding)
     (match binding
       [(list id (list (list pos v) ...)) `(,id (quote ,v))]
-      [(list id (list pos v)) (list id v)]))
+      [(list id (list pos v)) `(,id (quote ,v))]))
 
   (define (store->env a-list)
     (map de-pos a-list))
@@ -69,13 +69,12 @@
                 (define a? (lambda (b) (equal? b (cadr exp))))
                 (define not-a? (lambda (b) (not (a? b))))
                 (define val (e `(apply anything) stream store))
-                (printf "Matching ~a~n" val)
                 (match val
-                  [(list 'FAIL s st)               (begin (displayln 1) (list 'FAIL stream store))]
-                  [(list 'NONE s st)               (begin (displayln 2) (list 'FAIL stream store))]
-                  [(list `(,pos `(,__)) s st)      (begin (displayln 3) (list 'FAIL stream store))]
-                  [(list `(,pos ,(? not-a?)) s st) (begin (displayln 4) (list 'FAIL stream store))]
-                  [(list `(,pos ,(? a? b )) s st)  (begin (displayln 5))(list `(,pos ,b) s st)])))
+                  [(list 'FAIL s st)               (list 'FAIL stream store)]
+                  [(list 'NONE s st)               (list 'FAIL stream store)]
+                  [(list `(,pos `(,__)) s st)      (list 'FAIL stream store)]
+                  [(list `(,pos ,(? not-a?)) s st) (list 'FAIL stream store)]
+                  [(list `(,pos ,(? a? b )) s st)  (list `(,pos ,b) s st)])))
       ((alt) (match (e (second exp) stream store)
                [(list 'FAIL s st) (e (third exp) stream st)]
                [result result]))
@@ -94,9 +93,6 @@
                 [(list 'FAIL s st) (list 'FAIL stream st)]
                 [(list val s st) (list val s (cons (list (second exp) val) st))]))
       ((->)   (begin
-                ;; capturing the right name-space for eval is crazy
-                ;; this here is a temporary hack and has to go
-                ;; we should be capturing user ometa-code name-space
                 (define env (store->env store))
                 (define code (second exp))
                 (define result (eval `(let* ,(reverse env)
@@ -125,12 +121,10 @@
             (seq (seq (bind e (apply C))
                       (bind ll (apply B)))
                  (-> (begin
-                       (printf "AAA:~v~n" e)
                        (list h e ll))))))
     (B (many (atom #\l)))
     (C (seq (bind e (alt (atom #\E) (atom #\e)))
             (-> (begin
-                  (printf "Matched e:~v\n" (list e #\E))
                   (list e #\E)))))
     (D (empty))))
 
