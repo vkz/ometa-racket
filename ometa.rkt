@@ -1,9 +1,8 @@
 #lang racket
 
 ;; TODO:
-;; - stream constructors
+;; - proper index into stream
 ;; - tests for each e-case
-;; - de-pos values
 
 ;; e ==(empty)
 ;;     (atom a)
@@ -22,21 +21,38 @@
 
 ;; Stream == Value ...
 
+;; a == number
+;;      character (#\c)
+;;      string    ("string")
+
 ;; reflective hook to reel the module namespace
 ;; must insert this into user-code before interpreting
 ;; otherwise `eval' won't have bindings from user top-level
 (define-namespace-anchor a)
 (define ns (namespace-anchor->namespace a))
 
+(define (construct-stream input)
+  (cond
+   ((list? input) (list `((-1 0) ,(list->stream input))))
+   ((string? input) (string->stream input))))
 
-(define (interp omprog start input store)
+(define (list->stream l [depth 0])
+  (build-list (length l)
+              (lambda (n)
+                `((,depth ,n) ,(cond
+                                ((list? (list-ref l n)) (list->stream (list-ref l n) n))
+                                (else (list-ref l n) ))))))
+
+(define (string->stream s [depth 0])
+  (build-list (string-length s)
+              (lambda (n) `((,depth ,n) ,(string-ref s n)))))
+
+(define (interp omprog start stream store)
   ;; -> Value
-  (define stream (construct-stream input))
   (define fresh-store (lambda () '()))
   (define rules (append omprog '()))
   (define find-rule-by-name (lambda (name) (cadr (assoc name rules))))
   (define exp-name car)
-
 
   (define (rule-apply name stream store)
     (reverse
@@ -64,7 +80,7 @@
     (map de-pos a-list))
 
   (define (e exp stream store)
-    ;; -> ((pos value) stream store)
+    ;; -> ((pos * value or FAIL) * stream * store)
     (case (exp-name exp)
       ((apply) (rule-apply (cadr exp) stream store))
       ((empty) (list 'NONE stream store))
@@ -101,60 +117,52 @@
       ((->)   (begin
                 (define env (store->env store))
                 (define code (second exp))
-                (define result (eval `(let* ,(reverse env)
-                                        ,code)
-                                     ns))
-                (list (list +inf.0 result)
-                      stream
-                      store)))
-
+                (define result (eval `(let* ,(reverse env) ,code) ns))
+                (list (list `(+inf.0 +inf.0) result) stream store)))
       ((list) (begin
                 (define temprule (gensym "RULE"))
                 (define list-pattern (second exp))
-                (define subprog `((,temprule ,list-pattern)))
-                (printf "Subprog: ~v\n" subprog)
+                (define subprog (cons (list temprule list-pattern) rules))
                 (match (car stream)
                   [(list pos (? list? subinput))
-                   (begin (printf "LIST PAT\n")
-                          (printf "Sub-input: ~v\n" subinput)
-                          (printf "Sub-stream: ~v\n" (construct-stream subinput))
-                          (match (interp subprog temprule subinput store)
-                            [(list 'FAIL s st) (begin (printf "List subpat FAIL\n")
-                                                      (list 'FAIL stream st))]
-                            [(list val s st) (if (empty? s) ;list-pattern must match entire input list
-                                                 (list (list +inf.0 subinput) (cdr stream) st)
-                                                 (list 'FAIL stream st))]))]
-                  [else (begin (printf "Sub-stream not a list\n")
-                               (list 'FAIL stream store))])))
+                   (match (interp subprog temprule subinput store)
+                     [(list 'FAIL s st) (list 'FAIL stream st)]
+                     [(list val s st) (if (empty? s) ;list-pattern must match entire input list
+                                          (list (list `(+inf.0 +inf.0) subinput) (cdr stream) st)
+                                          (list 'FAIL stream st))])]
+                  [else (list 'FAIL stream store)])))
 
       ))
   (match (e `(apply ,start) stream store)
     [(list 'FAIL s st) (list 'FAIL stream st)]
     [result result ]))
 
-(define (construct-stream input)
-  (apply build-list
-         (match  (cond
-                  [(string? input) (list string-length string-ref)]
-                  [(list? input)   (list length list-ref)]
-                  [(vector? input) (list vector-length vector-ref)])
-           [(list len ref)
-            (list (len input) (lambda (n) (list n (ref input n))))])))
-
-
-
 (define testprog
-  `((A (seq (atom #\h)
-            (list (seq (atom #\e)
-                       (many (atom #\l))))))))
+  `((A (empty))))
 
-(define input (list #\h `(,@(string->list "e")) #\o))
+;; (define testprog
+;;   `((A (list (seq (atom 10)
+;;                   (apply B))))
+;;     (B (seq (list (many (apply anything)))
+;;             (apply anything)))))
+
+(define input `(10 (11 12) ((13 (14 (15))))))
+
 
 (printf "Input: ~v\n" input)
 (printf "Stream: ~v\n" (construct-stream input))
 
-(interp testprog 'A input '())
+(interp testprog 'A (construct-stream input) '())
 
+
+;; (define (construct-stream input)
+;;   (apply build-list
+;;          (match  (cond
+;;                   [(string? input) (list string-length string-ref)]
+;;                   [(list? input)   (list length list-ref)]
+;;                   [(vector? input) (list vector-length vector-ref)])
+;;            [(list length-of element-at)
+;;             (list (length-of input) (lambda (n) (list n (element-at input n))))])))
 
 ;; (define testprog
 ;;   `((A (seq (bind h (atom #\h))
