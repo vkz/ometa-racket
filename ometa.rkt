@@ -55,21 +55,22 @@
   (define exp-name car)
 
   (define (rule-apply name stream store)
-    (reverse
-     (cons store
-           (cdr (let (( r (reverse
-                           (cond
-                            ((equal? name 'anything)     (anything stream (fresh-store)))
-                            ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
-                            (else                        (error "no such rule " name))))))
-                  (unless (equal? name 'anything)
-                    (printf "~a BINDS: ~v~n" name (car r)))
-                  r)))))
+    (let (( r (reverse
+               (cond
+                ((equal? name 'anything)     (anything stream (fresh-store)))
+                ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
+                (else                        (error "no such rule " name))))))
+      (unless (equal? name 'anything)
+        (printf "~a BINDS: ~v~n" name (car r)))
+      (reverse (cons (append (car r) store) (cdr r)))))
 
   (define (anything stream store)
     (if (empty? stream)
         (fail/empty stream store)
         (list (car stream) (cdr stream) store)))
+
+  (define (to-value v)
+    (cadr v))
 
   (define (de-pos binding)
     (match binding
@@ -100,7 +101,7 @@
         ((empty) (list `((+inf.0 +inf.0) NONE) stream store))
 
         ((seq) (match (e (second exp) stream store)
-                 [(list val s st) (e (third exp) s st)]
+                 [(list val s st) (begin (printf "seq Store-left: ~v\n" st))(e (third exp) s st)]
                  [ fail fail]))
 
         ((atom) (begin
@@ -127,12 +128,17 @@
                [(list _ s st) (fail  stream st '())]))
 
         ((bind) (match (e (third exp) stream store)
-                  [(list val s st) (list val s (cons (list (second exp) val) st))]
+                  [(list val s st) (begin (define new-store (cons (list (second exp) val) st))
+                                          (printf "Bound ~v to ~v\nStore is: ~v\n" (second exp) val new-store )
+                                          (list val s new-store))]
                   [fail fail]))
 
         ((->)   (begin
+                  (printf "-> Store: ~v\n" store)
                   (define env (store->env store))
+                  (printf "-> Env: ~v\n" env)
                   (define code (second exp))
+                  (printf "Eval: ~v~n" `(let* ,(reverse env) ,code))
                   (define result (eval `(let* ,(reverse env) ,code) ns))
                   (list (list `(+inf.0 +inf.0) result) stream store)))
 
@@ -143,20 +149,23 @@
                   (match (car stream)
                     [(list pos (? list? substream))
                      (match (interp subprog temprule substream store)
-                       [(list val (? empty? s) st)   (list (list `(+inf.0 +inf.0) substream) (cdr stream) st)]
+                       [(list val (? empty? s) st)   (begin (printf "List Store: ~v~n" st)
+                                                            (list (list `(+inf.0 +inf.0) substream) (cdr stream) st))]
                        [(list 'FAIL faillist s st)   (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
                        [partially-matched-substream  (fail/empty stream store)])]
                     [(list pos (? (compose not list?))) (fail/empty stream store)]
-                    [ oops (error "Stream cell must contain a Value" (car stream))]))))
+                    [ oops (error "Stream cell must contain a Value" (car stream))])
+                  )))
       [(list 'FAIL faillist s st) (fail exp stream st faillist)]
       [result result]))
 
   (e `(apply ,start) stream store))
 
 (define testprog
-  `((A (list (seq (atom 10)
-                  (apply B))))
-    (B (list (seq (atom 11) (atom 12))))))
+  `((A (seq (list (seq (bind x (atom 10))
+                       (bind y (apply B))))
+            (-> (list x y))))
+    (B (list (seq (atom 11) (many (apply anything)))))))
 
 (define input `(10 (11 12 13)))
 
