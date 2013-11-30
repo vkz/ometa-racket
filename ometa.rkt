@@ -47,6 +47,13 @@
   (build-list (string-length s)
               (lambda (n) `((,depth ,n) ,(string-ref s n)))))
 
+(define (de-index-list l)
+  (define (de-index node)
+    (cond
+     ((list? (cadr node)) (de-index-list (cadr node)))
+     (else (cadr node))))
+  (map de-index l))
+
 (define (interp omprog start stream store)
   ;; -> Value
   (define fresh-store (lambda () '()))
@@ -65,20 +72,16 @@
       (reverse (cons (append (car r) store) (cdr r)))))
 
   (define (anything stream store)
+    (define value cadr)
     (if (empty? stream)
         (fail/empty stream store)
-        (list (car stream) (cdr stream) store)))
-
-  (define (to-value v)
-    (cadr v))
-
-  (define (de-pos binding)
-    (match binding
-      [(list id (list (list pos v) ...)) `(,id (quote ,v))]
-      [(list id (list pos v)) `(,id (quote ,v))]))
+        (list (value (car stream)) (cdr stream) store)))
 
   (define (store->env a-list)
-    (map de-pos a-list))
+    (define (quote-value binding)
+      (match binding
+        [(list id v) `(,id (quote ,v))]))
+    (map quote-value  a-list))
 
   (define (fail e stream store faillist)
     ;; -> (list 'FAIL fail-list stream store)
@@ -98,7 +101,7 @@
       (case (exp-name exp)
         ((apply) (rule-apply (cadr exp) stream store))
 
-        ((empty) (list `((+inf.0 +inf.0) NONE) stream store))
+        ((empty) (list 'NONE stream store))
 
         ((seq) (match (e (second exp) stream store)
                  [(list val s st) (begin (printf "seq Store-left: ~v\n" st))(e (third exp) s st)]
@@ -107,8 +110,8 @@
         ((atom) (begin
                   (define a? (lambda (b) (equal? b (cadr exp))))
                   (match (e `(apply anything) stream store)
-                    [(list `(,pos ,(? a? a)) s st) (list `(,pos ,a) s st)]
-                    [ _ (fail/empty stream store)])))
+                    [(list 'FAIL faillist s st) (fail/empty stream store)]
+                    [(list (? a? a) s st) (list a s st)])))
 
         ((alt) (match (e (second exp) stream store)
                  [(list 'FAIL faillist s st) (e (third exp) stream st)]
@@ -124,7 +127,7 @@
                                         (list (append `(,v1) v-rest) s-rest st-rest)])]))
 
         ((~) (match (e (second exp) stream store)
-               [(list 'FAIL faillist s st) (list `((+inf.0 +inf.0) NONE) stream st)]
+               [(list 'FAIL faillist s st) (list 'NONE stream st)]
                [(list _ s st) (fail  stream st '())]))
 
         ((bind) (match (e (third exp) stream store)
@@ -140,7 +143,7 @@
                   (define code (second exp))
                   (printf "Eval: ~v~n" `(let* ,(reverse env) ,code))
                   (define result (eval `(let* ,(reverse env) ,code) ns))
-                  (list (list `(+inf.0 +inf.0) result) stream store)))
+                  (list result stream store)))
 
         ((list) (begin
                   (define temprule (gensym "RULE"))
@@ -150,7 +153,7 @@
                     [(list pos (? list? substream))
                      (match (interp subprog temprule substream store)
                        [(list val (? empty? s) st)   (begin (printf "List Store: ~v~n" st)
-                                                            (list (list `(+inf.0 +inf.0) substream) (cdr stream) st))]
+                                                            (list (de-index-list substream) (cdr stream) st))]
                        [(list 'FAIL faillist s st)   (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
                        [partially-matched-substream  (fail/empty stream store)])]
                     [(list pos (? (compose not list?))) (fail/empty stream store)]
