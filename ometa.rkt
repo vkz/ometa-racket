@@ -68,7 +68,7 @@
 
   (define (anything stream store)
     (if (empty? stream)
-        (fail '(apply anything) stream store '())
+        (fail/empty stream store)
         (list (car stream) (cdr stream) store)))
 
   (define (de-pos binding)
@@ -80,90 +80,85 @@
     (map de-pos a-list))
 
   (define (fail e stream store faillist)
-    ;; -> ('FAIL     fail-list         stream store)
-    ;; -> ('FAIL ((e index value) ...) stream store)
+    ;; -> (list 'FAIL fail-list stream store)
+    ;; fail-list is a List-of (exp index top-of-stream-value)
     (cond
      ((empty? stream) (list 'FAIL (cons (list e 'END '_)      faillist) stream store))
      (else            (list 'FAIL (cons (cons e (car stream)) faillist) stream store))))
 
+  (define (fail/empty stream store)
+    (list 'FAIL '() stream store))
+
   (define (e exp stream store)
-    ;; -> ((pos * value or FAIL) * stream * store)
-    (case (exp-name exp)
-      ((apply) (rule-apply (cadr exp) stream store))
-      ((empty) (list `((+inf.0 +inf.0) NONE) stream store))
+    ;; -> ((index value) stream store)
+    ;; -> ('FAIL fail-list stream store)
+    ;; (last fail-list) is always the (exp index top-of-stream-value) that triggered failure
+    (match
+      (case (exp-name exp)
+        ((apply) (rule-apply (cadr exp) stream store))
 
-      ((seq) (match (e (second exp) stream store)
-               [(list 'FAIL faillist s st) (fail exp stream st faillist)]
-               [(list  val  s st)
-                (match  (e (third exp) s st)
-                  [(list 'FAIL faillist2 s2 st2) (fail exp stream st2 faillist2)]
-                  [ result result])]))
+        ((empty) (list `((+inf.0 +inf.0) NONE) stream store))
 
-      ((atom) (begin
-                (define a? (lambda (b) (equal? b (cadr exp))))
-                (define not-a? (lambda (b) (not (a? b))))
-                (define val (e `(apply anything) stream store))
-                (match val
-                  [(list 'FAIL faillist s st)      (fail exp stream store '())]
-                  [(list `(,pos 'NONE) s st)       (fail exp stream store '())]
-                  [(list `(,pos `(,_)) s st)       (fail exp stream store '())]
-                  [(list `(,pos ,(? not-a?)) s st) (fail exp stream store '())]
-                  [(list `(,pos ,(? a? a)) s st)   (list `(,pos ,a) s st)])))
+        ((seq) (match (e (second exp) stream store)
+                 [(list val s st) (e (third exp) s st)]
+                 [ fail fail]))
 
-      ((alt) (match (e (second exp) stream store)
-               [(list 'FAIL faillist s st)
-                (match  (e (third exp) stream st)
-                  [(list 'FAIL faillist2 s2 st2) (fail exp stream st2 faillist2)]
-                  [ result result])]
-               [result result]))
+        ((atom) (begin
+                  (define a? (lambda (b) (equal? b (cadr exp))))
+                  (match (e `(apply anything) stream store)
+                    [(list `(,pos ,(? a? a)) s st) (list `(,pos ,a) s st)]
+                    [ _ (fail/empty stream store)])))
 
-      ((many) (match (e (second exp) stream store)
-                [(list 'FAIL faillist s st) (list '() stream st)] ;; try e -> if 'FAIL then return '()
-                [_ (e `(many1 ,(second exp)) stream store)]))
-      ((many1) (match (e (second exp) stream store)
-                 [(list 'FAIL faillist s1 st1) (list '() stream st1)]
-                 [(list v1 s1 st1) (match (e `(many1 ,(second exp)) s1 st1)
-                                     [(list v-rest s-rest st-rest)
-                                      (list (append `(,v1) v-rest) s-rest st-rest)])]))
+        ((alt) (match (e (second exp) stream store)
+                 [(list 'FAIL faillist s st) (e (third exp) stream st)]
+                 [result result]))
 
-      ((~) (match (e (second exp) stream store)
-             [(list 'FAIL faillist s st) (list `((+inf.0 +inf.0) NONE) stream st)]
-             [(list _ s st) (fail exp stream st '())]))
+        ((many) (match (e (second exp) stream store)
+                  [(list 'FAIL faillist s st) (list '() stream st)] ;; try e -> if 'FAIL then return '()
+                  [_ (e `(many1 ,(second exp)) stream store)]))
+        ((many1) (match (e (second exp) stream store)
+                   [(list 'FAIL faillist s1 st1) (list '() stream st1)]
+                   [(list v1 s1 st1) (match (e `(many1 ,(second exp)) s1 st1)
+                                       [(list v-rest s-rest st-rest)
+                                        (list (append `(,v1) v-rest) s-rest st-rest)])]))
 
-      ((bind) (match (e (third exp) stream store)
-                [(list 'FAIL faillist s st) (fail exp stream st faillist)]
-                [(list val s st) (list val s (cons (list (second exp) val) st))]))
-      ((->)   (begin
-                (define env (store->env store))
-                (define code (second exp))
-                (define result (eval `(let* ,(reverse env) ,code) ns))
-                (list (list `(+inf.0 +inf.0) result) stream store)))
-      ((list) (begin
-                (define temprule (gensym "RULE"))
-                (define list-pattern (second exp))
-                (define subprog (cons (list temprule list-pattern) rules))
-                (match (car stream)
-                  [(list pos (? list? subinput))
-                   (match (interp subprog temprule subinput store)
-                     [(list 'FAIL faillist s st) (fail exp stream st faillist)]
-                     [(list val s st) (if (empty? s) ;list-pattern must match entire input list
-                                          (list (list `(+inf.0 +inf.0) subinput) (cdr stream) st)
-                                          (fail exp stream st '()))])]
-                  [(list pos (? (compose not list?))) (fail exp stream store '())]
-                  [ oops (error "Stream cell must contain a Value" (car stream))])))
+        ((~) (match (e (second exp) stream store)
+               [(list 'FAIL faillist s st) (list `((+inf.0 +inf.0) NONE) stream st)]
+               [(list _ s st) (fail  stream st '())]))
 
-      ))
-  (match (e `(apply ,start) stream store)
-    [(list 'FAIL faillist s st) (fail `(apply ,start) stream st faillist)]
-    [result result ]))
+        ((bind) (match (e (third exp) stream store)
+                  [(list val s st) (list val s (cons (list (second exp) val) st))]
+                  [fail fail]))
+
+        ((->)   (begin
+                  (define env (store->env store))
+                  (define code (second exp))
+                  (define result (eval `(let* ,(reverse env) ,code) ns))
+                  (list (list `(+inf.0 +inf.0) result) stream store)))
+
+        ((list) (begin
+                  (define temprule (gensym "RULE"))
+                  (define list-pattern (second exp))
+                  (define subprog (cons (list temprule list-pattern) rules))
+                  (match (car stream)
+                    [(list pos (? list? substream))
+                     (match (interp subprog temprule substream store)
+                       [(list val (? empty? s) st)   (list (list `(+inf.0 +inf.0) substream) (cdr stream) st)]
+                       [(list 'FAIL faillist s st)   (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
+                       [partially-matched-substream  (fail/empty stream store)])]
+                    [(list pos (? (compose not list?))) (fail/empty stream store)]
+                    [ oops (error "Stream cell must contain a Value" (car stream))]))))
+      [(list 'FAIL faillist s st) (fail exp stream st faillist)]
+      [result result]))
+
+  (e `(apply ,start) stream store))
 
 (define testprog
   `((A (list (seq (atom 10)
                   (apply B))))
-    (B (seq (list (many (apply anything)))
-            (apply anything)))))
+    (B (list (seq (atom 11) (atom 12))))))
 
-(define input `(10 (11 12)))
+(define input `(10 (11 12 13)))
 
 
 (printf "Input: ~v\n" input)
