@@ -1,5 +1,7 @@
 #lang racket
 
+(require "helpers.rkt")
+
 ;; TODO:
 ;; - proper index into stream
 ;; - tests for each e-case
@@ -47,6 +49,7 @@
   (build-list (string-length s)
               (lambda (n) `((,depth ,n) ,(string-ref s n)))))
 
+
 (define (de-index-list l)
   (define (de-index node)
     (cond
@@ -55,7 +58,8 @@
   (map de-index l))
 
 (define (interp omprog start stream store)
-  ;; -> Value
+  ;; -> (Value Stream Store)
+  ;; -> ('FAIL fail-list Stream Store)
   (define fresh-store (lambda () '()))
   (define rules (append omprog '()))
   (define find-rule-by-name (lambda (name) (cadr (assoc name rules))))
@@ -68,7 +72,7 @@
                 ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
                 (else                        (error "no such rule " name))))))
       (unless (equal? name 'anything)
-        (printf "~a BINDS: ~v~n" name (car r)))
+        (printf "~a binds: ~v~n" name (car r)))
       (reverse (cons (append (car r) store) (cdr r)))))
 
   (define (anything stream store)
@@ -84,8 +88,7 @@
     (map quote-value  a-list))
 
   (define (fail e stream store faillist)
-    ;; -> (list 'FAIL fail-list stream store)
-    ;; fail-list is a List-of (exp index top-of-stream-value)
+    ;; -> ('FAIL fail-list stream store) where `fail-list' is a list of (exp index top-of-stream-value)
     (cond
      ((empty? stream) (list 'FAIL (cons (list e 'END '_)      faillist) stream store))
      (else            (list 'FAIL (cons (cons e (car stream)) faillist) stream store))))
@@ -96,7 +99,6 @@
   (define (e exp stream store)
     ;; -> ((index value) stream store)
     ;; -> ('FAIL fail-list stream store)
-    ;; (last fail-list) is always the (exp index top-of-stream-value) that triggered failure
     (match
       (case (exp-name exp)
         ((apply) (rule-apply (cadr exp) stream store))
@@ -104,21 +106,21 @@
         ((empty) (list 'NONE stream store))
 
         ((seq) (match (e (second exp) stream store)
-                 [(list val s st) (begin (printf "seq Store-left: ~v\n" st))(e (third exp) s st)]
+                 [(list val s st) (e (third exp) s st)]
                  [ fail fail]))
 
         ((atom) (begin
                   (define a? (lambda (b) (equal? b (cadr exp))))
                   (match (e `(apply anything) stream store)
-                    [(list 'FAIL faillist s st) (fail/empty stream store)]
-                    [(list (? a? a) s st) (list a s st)])))
+                    [(list (? a? a) s st) (list a s st)]
+                    [ _ (fail/empty stream store)])))
 
         ((alt) (match (e (second exp) stream store)
                  [(list 'FAIL faillist s st) (e (third exp) stream st)]
                  [result result]))
 
         ((many) (match (e (second exp) stream store)
-                  [(list 'FAIL faillist s st) (list '() stream st)] ;; try e -> if 'FAIL then return '()
+                  [(list 'FAIL faillist s st) (list '() stream st)]
                   [_ (e `(many1 ,(second exp)) stream store)]))
         ((many1) (match (e (second exp) stream store)
                    [(list 'FAIL faillist s1 st1) (list '() stream st1)]
@@ -131,17 +133,12 @@
                [(list _ s st) (fail  stream st '())]))
 
         ((bind) (match (e (third exp) stream store)
-                  [(list val s st) (begin (define new-store (cons (list (second exp) val) st))
-                                          (printf "Bound ~v to ~v\nStore is: ~v\n" (second exp) val new-store )
-                                          (list val s new-store))]
+                  [(list val s st) (list val s (cons (list (second exp) val) st))]
                   [fail fail]))
 
         ((->)   (begin
-                  (printf "-> Store: ~v\n" store)
                   (define env (store->env store))
-                  (printf "-> Env: ~v\n" env)
                   (define code (second exp))
-                  (printf "Eval: ~v~n" `(let* ,(reverse env) ,code))
                   (define result (eval `(let* ,(reverse env) ,code) ns))
                   (list result stream store)))
 
@@ -152,32 +149,31 @@
                   (match (car stream)
                     [(list pos (? list? substream))
                      (match (interp subprog temprule substream store)
-                       [(list val (? empty? s) st)   (begin (printf "List Store: ~v~n" st)
-                                                            (list (de-index-list substream) (cdr stream) st))]
+                       [(list val (? empty? s) st)   (list (de-index-list substream) (cdr stream) st)]
                        [(list 'FAIL faillist s st)   (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
-                       [partially-matched-substream  (fail/empty stream store)])]
+                       [substream-is-too-long (fail/empty stream store)])]
                     [(list pos (? (compose not list?))) (fail/empty stream store)]
-                    [ oops (error "Stream cell must contain a Value" (car stream))])
-                  )))
+                    [ oops (error "Stream cell must contain a Value" (car stream))])))
+        )
       [(list 'FAIL faillist s st) (fail exp stream st faillist)]
       [result result]))
-
   (e `(apply ,start) stream store))
 
 (define testprog
   `((A (seq (list (seq (bind x (atom 10))
                        (bind y (apply B))))
             (-> (list x y))))
-    (B (list (seq (atom 11) (many (apply anything)))))))
+    (B (list (seq (atom 12) (many (apply anything)))))))
 
 (define input `(10 (11 12 13)))
-
 
 (printf "Input: ~v\n" input)
 (printf "Stream: ~v\n" (construct-stream input))
 
 (interp testprog 'A (construct-stream input) '())
 
+(pprint
+ (interp testprog 'A (construct-stream input) '()))
 
 ;; (define (construct-stream input)
 ;;   (apply build-list
