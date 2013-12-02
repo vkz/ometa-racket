@@ -34,21 +34,18 @@
 (define ns (namespace-anchor->namespace a))
 
 (define (construct-stream input)
+  (define (list->stream l [depth 0])
+    (build-list (length l)
+                (lambda (n)
+                  `((,depth ,n) ,(cond
+                                  ((list? (list-ref l n)) (list->stream (list-ref l n) n))
+                                  (else (list-ref l n) ))))))
+  (define (string->stream s [depth 0])
+    (build-list (string-length s)
+                (lambda (n) `((,depth ,n) ,(string-ref s n)))))
   (cond
    ((list? input) (list `((-1 0) ,(list->stream input))))
    ((string? input) (string->stream input))))
-
-(define (list->stream l [depth 0])
-  (build-list (length l)
-              (lambda (n)
-                `((,depth ,n) ,(cond
-                                ((list? (list-ref l n)) (list->stream (list-ref l n) n))
-                                (else (list-ref l n) ))))))
-
-(define (string->stream s [depth 0])
-  (build-list (string-length s)
-              (lambda (n) `((,depth ,n) ,(string-ref s n)))))
-
 
 (define (de-index-list l)
   (define (de-index node)
@@ -56,6 +53,14 @@
      ((list? (cadr node)) (de-index-list (cadr node)))
      (else (cadr node))))
   (map de-index l))
+
+;; memoization
+;; table-entry: (rule-name stream) -> value
+(define table (make-hash))
+(define (memo rule-name stream)
+  (hash-ref table (list rule-name stream) #f))
+(define (memo-add rule-name stream value)
+  (hash-set! table (list rule-name stream) value))
 
 (define (interp omprog start stream store)
   ;; -> (Value Stream Store)
@@ -66,10 +71,15 @@
   (define exp-name car)
 
   (define (rule-apply name stream store)
+    ;;(printf "Table: ~v~n" table)
     (let (( r (reverse
                (cond
                 ((equal? name 'anything)     (anything stream (fresh-store)))
-                ((find-rule-by-name name) => (lambda (body) (e body stream (fresh-store))))
+                ((memo name stream)       => (lambda (memo-entry) memo-entry))
+                ((find-rule-by-name name) => (lambda (body)
+                                               (define ans (e body stream (fresh-store)))
+                                               (memo-add name stream ans)
+                                               ans))
                 (else                        (error "no such rule " name))))))
       (unless (equal? name 'anything)
         (printf "~a binds: ~v~n" name (car r)))
@@ -163,17 +173,27 @@
   `((A (seq (list (seq (bind x (atom 10))
                        (bind y (apply B))))
             (-> (list x y))))
-    (B (list (seq (atom 12) (many (apply anything)))))))
+    (B (list (seq (alt (seq (apply C) (atom 12))
+                       (seq (apply C) (atom 13)))
+                  (apply anything))))
+    (C (atom 12))))
 
-(define input `(10 (11 12 13)))
+(define input `(10 (11 13 15)))
 
 (printf "Input: ~v\n" input)
 (printf "Stream: ~v\n" (construct-stream input))
 
-(interp testprog 'A (construct-stream input) '())
+(let ((ans (interp testprog 'A (construct-stream input) '())))
+  (pprint ans)
+  (printf "\n\n\n")
+  ans)
 
-(pprint
- (interp testprog 'A (construct-stream input) '()))
+;; interesting example
+;; note the scoping of `x' in *-pattern
+;; mulOp = ’*’                                          -> ’mul’
+;;       | ’/’                                          -> ’div’,
+;; fac   = num:x (mulOp:op num:y -> (x = [op, x, y]))* -> x
+
 
 ;; (define (construct-stream input)
 ;;   (apply build-list
