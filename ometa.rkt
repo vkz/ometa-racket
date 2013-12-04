@@ -75,18 +75,20 @@
      (else #f)))
 
   (define (rule-apply name stream store)
-    ;;(printf "Table: ~v~n" table)
+    (unless (equal? name 'anything) (printf "Applying ~v => " name))
     (let (( r (reverse
                (cond
                 ((equal? name 'anything)     (anything stream (fresh-store)))
-                ((memo name stream)       => (lambda (memo-entry) memo-entry))
+                ((memo name stream)       => (lambda (memo-entry)
+                                               (printf "in memo -> ")
+                                               memo-entry))
                 ((find-rule-by-name name) => (lambda (body)
-                                               (define ans (e body stream (fresh-store)))
-                                               (memo-add name stream ans)
-                                               ans))
+                                               (memo-add name stream (fail/empty stream (fresh-store))) ;losing store?
+                                               (let ((ans (e body stream (fresh-store))))
+                                                 (memo-add name stream ans)
+                                                 ans)))
                 (else                        (error "no such rule " name))))))
-      (unless (equal? name 'anything)
-        (printf "~a binds: ~v~n" name (car r)))
+      (printf "~v~n" (car (reverse r)))
       (reverse (cons (append (car r) store) (cdr r)))))
 
   (define (anything stream store)
@@ -173,19 +175,18 @@
       [result result]))
   (e `(apply ,start) stream store))
 
+(define input "1-2-3")
 (define testprog
-  `((A (seq (list (seq (bind x (atom 10))
-                       (bind y (apply D))))
-            (-> (list x y))))
-    (B (list (seq (alt (seq (apply C) (atom 12))
-                       (seq (apply C) (atom 13)))
-                  (apply anything))))
-    (C (atom 12))))
-
-(define input `(10 (12 13 15)))
+  `((A (alt (seq (apply A)
+                 (seq (atom #\-)
+                      (apply N)))
+            (apply N)))
+    (N (alt (atom #\1)
+            (alt (atom #\2)
+                 (atom #\3))))))
 
 (printf "Input: ~v\n" input)
-(printf "Stream: ~v\n" (construct-stream input))
+;; (printf "Stream: ~v\n" (construct-stream input))
 
 (let ((ans (interp testprog 'A (construct-stream input) '())))
   (pprint ans)
@@ -198,6 +199,16 @@
 ;;       | ’/’                                          -> ’div’,
 ;; fac   = num:x (mulOp:op num:y -> (x = [op, x, y]))* -> x
 
+;; (define testprog
+;;   `((A (seq (list (seq (bind x (atom 10))
+;;                        (bind y (apply B))))
+;;             (-> (list x y))))
+;;     (B (list (seq (alt (seq (apply C) (atom 12))
+;;                        (seq (apply C) (atom 13)))
+;;                   (apply anything))))
+;;     (C (atom 12))))
+
+;; (define input `(10 (12 13 15)))
 
 ;; (define (construct-stream input)
 ;;   (apply build-list

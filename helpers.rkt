@@ -18,6 +18,7 @@
     -----------------------
     faillist =====> ~a
     store    =====> ~v
+    stream   =====> ~v
 
 eof
     )
@@ -28,14 +29,16 @@ eof
     --------------------------
     ** Match succeeded with **
     --------------------------
-    value =====> ~v
+    value    =====> ~v
+    stream   =====> ~v
 
 eof
     )
+  (define left-on (compose list->string de-index-list ))
   (match result
     [(list 'FAIL faillist stream store)
      (define flist (list 'FAIL (map (lambda (f) (list (pretty-format (first f)) (de-index-list (third f)))) faillist)))
-     (printf fail-fmt (pretty-format flist) store)]
+     (printf fail-fmt (pretty-format flist) store (left-on stream))]
 
     [(list val stream store)
-     (printf success-fmt val)]))
+     (printf success-fmt val (left-on stream))]))
