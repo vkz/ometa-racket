@@ -67,8 +67,12 @@
   ;; -> ('FAIL fail-list Stream Store)
   (define fresh-store (lambda () '()))
   (define rules (append omprog '()))
-  (define find-rule-by-name (lambda (name) (cadr (assoc name rules))))
   (define exp-name car)
+  (define (find-rule-by-name  name)
+    (cond
+     ((assoc name rules)
+      => (lambda (rule-pair) (cadr rule-pair)))
+     (else #f)))
 
   (define (rule-apply name stream store)
     ;;(printf "Table: ~v~n" table)
@@ -171,14 +175,14 @@
 
 (define testprog
   `((A (seq (list (seq (bind x (atom 10))
-                       (bind y (apply B))))
+                       (bind y (apply D))))
             (-> (list x y))))
     (B (list (seq (alt (seq (apply C) (atom 12))
                        (seq (apply C) (atom 13)))
                   (apply anything))))
     (C (atom 12))))
 
-(define input `(10 (11 13 15)))
+(define input `(10 (12 13 15)))
 
 (printf "Input: ~v\n" input)
 (printf "Stream: ~v\n" (construct-stream input))
