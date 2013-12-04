@@ -77,9 +77,25 @@
       => (lambda (rule-pair) (cadr rule-pair)))
      (else #f)))
 
-  ;; exrp = expr - num
+  ;; expr = expr - num
   ;;      | num
   (define (rule-apply name stream store)
+    
+    ;; we're not currently using the f argument to grow-lr
+    (define (grow-lr body f) 
+      (let* ([ans (e body stream store)]
+             [ans-stream (value-stream ans)]
+             [memo-entry (memo name stream)]
+             [memo-stream (value-stream (m-value memo-entry))])
+        (if (or (fail? ans)
+                ;; check that ans-stream is longer than memo-stream
+                (>= (length ans-stream) (length memo-stream)))
+            (m-value memo-entry)
+            ;; we're not done; keep growing
+            (begin
+              (memo-add name stream ans (m-lr? memo-entry) (m-lr-detected? memo-entry))
+              (grow-lr body f)))))
+        
     (unless (equal? name 'anything) (printf "Applying ~v => " name))
     (let (( r (reverse
                (cond
@@ -103,13 +119,13 @@
                                                  (if (and (m-lr-detected? m)
                                                           (not (fail? ans)))
                                                      ;; in left recursion
-                                                     (grow-lr ...)
+                                                     (grow-lr body stream '())
                                                      ;; not in left recursion
                                                      ans))))
                 (else                        (error "no such rule " name))))))
       (printf "~v~n" (car (reverse r)))
       (reverse (cons (append (car r) store) (cdr r)))))
-
+  
   (define (anything stream store)
     (define value cadr)
     (if (empty? stream)
