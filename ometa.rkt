@@ -55,12 +55,12 @@
   (map de-index l))
 
 ;; memoization
-;; table-entry: (rule-name stream) -> value
+;; table-entry: (rule-name stream) -> (value lr? lr-detected?)
 (define table (make-hash))
 (define (memo rule-name stream)
   (hash-ref table (list rule-name stream) #f))
-(define (memo-add rule-name stream value)
-  (hash-set! table (list rule-name stream) value))
+(define (memo-add rule-name stream value [lr? #f] [lr-detected? #f])
+  (hash-set! table (list rule-name stream) (list value lr? lr-detected?)))
 
 (define (interp omprog start stream store)
   ;; -> (Value Stream Store)
@@ -81,7 +81,7 @@
                 ((equal? name 'anything)     (anything stream (fresh-store)))
                 ((memo name stream)       => (lambda (memo-entry)
                                                (printf "in memo  -> ")
-                                               memo-entry))
+                                               (m-value memo-entry)))
                 ((find-rule-by-name name) => (lambda (body)
                                                (memo-add name stream (fail/empty stream (fresh-store))) ;losing store?
                                                (let ((ans (e body stream (fresh-store))))

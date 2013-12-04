@@ -51,10 +51,13 @@ eof
     [(list 'FAIL _ s __) s]
     [(list val s _) s]))
 (define (stream-pos0 s) (caar s))
+(define m-value first)
+(define m-lr? second)
+(define m-lr-detected? third)
 
 (define (ptable t)
   (printf "~n~n    Memo:~n")
-  (hash-for-each t (lambda (k v)
-                     (printf "    ~a ~a ==> ~a ~a~n"
+  (hash-for-each t (lambda (k m)
+                     (printf "    ~a ~a ==> ~v ~a~n"
                              (car k) (stream-pos0 (second k))
-                             (car v) (stream-pos0 (value-stream v))))))
+                             (car (m-value m)) (stream-pos0 (value-stream (m-value m)))))))
