@@ -61,6 +61,9 @@
   (hash-ref table (list rule-name stream) #f))
 (define (memo-add rule-name stream value [lr? #f] [lr-detected? #f])
   (hash-set! table (list rule-name stream) (list value lr? lr-detected?)))
+(define (memo-update-lr-detected rule-name stream)
+  (define m (memo rule-name stream))
+  (memo-add rule-name stream (m-value m) (m-lr? m) #t))
 
 (define (interp omprog start stream store)
   ;; -> (Value Stream Store)
@@ -86,7 +89,10 @@
                 ;; return what we've looked up in the memo table.
                 ((memo name stream)       => (lambda (memo-entry)
                                                (printf "in memo  -> ")
-                                               (m-value memo-entry)))
+                                               (if (m-lr? memo-entry)
+                                                   (begin (memo-update-lr-detected name stream)
+                                                          (fail/empty stream store)) ;losing store?
+                                                   (m-value memo-entry))))
                 ((find-rule-by-name name) => (lambda (body)
                                                (memo-add name stream (fail/empty stream (fresh-store))) ;losing store?
                                                (let ((ans (e body stream (fresh-store))))
