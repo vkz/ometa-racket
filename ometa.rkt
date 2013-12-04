@@ -79,6 +79,11 @@
     (let (( r (reverse
                (cond
                 ((equal? name 'anything)     (anything stream (fresh-store)))
+                ;; If we're calling rule-apply because we're
+                ;; evaluating the body of a left-recursive rule, then
+                ;; LR will be set and we need to set the lr-detected?
+                ;; flag to true and fail parsing.  Otherwise we just
+                ;; return what we've looked up in the memo table.
                 ((memo name stream)       => (lambda (memo-entry)
                                                (printf "in memo  -> ")
                                                (m-value memo-entry)))
