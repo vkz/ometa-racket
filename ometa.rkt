@@ -77,6 +77,8 @@
       => (lambda (rule-pair) (cadr rule-pair)))
      (else #f)))
 
+  ;; exrp = expr - num
+  ;;      | num
   (define (rule-apply name stream store)
     (unless (equal? name 'anything) (printf "Applying ~v => " name))
     (let (( r (reverse
@@ -95,9 +97,15 @@
                                                    (m-value memo-entry))))
                 ((find-rule-by-name name) => (lambda (body)
                                                (memo-add name stream (fail/empty stream (fresh-store))) ;losing store?
-                                               (let ((ans (e body stream (fresh-store))))
-                                                 (memo-add name stream ans)
-                                                 ans)))
+                                               (let ((ans (e body stream (fresh-store)))
+                                                     (m (memo name stream)))
+                                                 (memo-add name stream ans (m-lr? m) (m-lr-detected? m))
+                                                 (if (and (m-lr-detected? m)
+                                                          (not (fail? ans)))
+                                                     ;; in left recursion
+                                                     (grow-lr ...)
+                                                     ;; not in left recursion
+                                                     ans))))
                 (else                        (error "no such rule " name))))))
       (printf "~v~n" (car (reverse r)))
       (reverse (cons (append (car r) store) (cdr r)))))
