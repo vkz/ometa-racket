@@ -50,7 +50,8 @@ eof
   (match v
     [(list 'FAIL _ s __) s]
     [(list val s _) s]))
-(define (stream-pos0 s) (caar s))
+(define (stream-pos0 s)
+  (if (empty? s) '() (caar s)))
 (define m-value first)
 (define m-lr? second)
 (define m-lr-detected? third)

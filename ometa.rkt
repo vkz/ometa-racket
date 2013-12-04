@@ -61,9 +61,10 @@
   (hash-ref table (list rule-name stream) #f))
 (define (memo-add rule-name stream value [lr? #f] [lr-detected? #f])
   (hash-set! table (list rule-name stream) (list value lr? lr-detected?)))
-(define (memo-update-lr-detected rule-name stream)
+(define (m-lr/off-detected/on rule-name stream)
   (define m (memo rule-name stream))
-  (memo-add rule-name stream (m-value m) (m-lr? m) #t))
+  (memo-add rule-name stream (m-value m) #f #t))
+(define LR #t)
 
 (define (interp omprog start stream store)
   ;; -> (Value Stream Store)
@@ -80,22 +81,30 @@
   ;; expr = expr - num
   ;;      | num
   (define (rule-apply name stream store)
-    
+
     ;; we're not currently using the f argument to grow-lr
-    (define (grow-lr body f) 
+    (define (grow-lr body)
+      (printf "Growing with table:~n")
+      (ptable table)
       (let* ([ans (e body stream store)]
              [ans-stream (value-stream ans)]
              [memo-entry (memo name stream)]
              [memo-stream (value-stream (m-value memo-entry))])
+        (printf "Length of (ans => ~v) (memo-ans => ~v)~n" (length ans-stream) (length memo-stream))
         (if (or (fail? ans)
                 ;; check that ans-stream is longer than memo-stream
                 (>= (length ans-stream) (length memo-stream)))
-            (m-value memo-entry)
+            (begin
+              (printf "Grow failed!~n")
+              (pprint (m-value memo-entry))
+              (m-value memo-entry))
+
             ;; we're not done; keep growing
             (begin
+              (printf "Grow succeeded!~n")
               (memo-add name stream ans (m-lr? memo-entry) (m-lr-detected? memo-entry))
-              (grow-lr body f)))))
-        
+              (grow-lr body)))))
+
     (unless (equal? name 'anything) (printf "Applying ~v => " name))
     (let (( r (reverse
                (cond
@@ -108,24 +117,24 @@
                 ((memo name stream)       => (lambda (memo-entry)
                                                (printf "in memo  -> ")
                                                (if (m-lr? memo-entry)
-                                                   (begin (memo-update-lr-detected name stream)
+                                                   (begin (m-lr/off-detected/on name stream)
                                                           (fail/empty stream store)) ;losing store?
                                                    (m-value memo-entry))))
                 ((find-rule-by-name name) => (lambda (body)
-                                               (memo-add name stream (fail/empty stream (fresh-store))) ;losing store?
+                                               (memo-add name stream (fail/empty stream (fresh-store)) LR) ;losing store?
                                                (let ((ans (e body stream (fresh-store)))
                                                      (m (memo name stream)))
                                                  (memo-add name stream ans (m-lr? m) (m-lr-detected? m))
                                                  (if (and (m-lr-detected? m)
                                                           (not (fail? ans)))
                                                      ;; in left recursion
-                                                     (grow-lr body stream '())
+                                                     (grow-lr body)
                                                      ;; not in left recursion
                                                      ans))))
                 (else                        (error "no such rule " name))))))
       (printf "~v~n" (car (reverse r)))
       (reverse (cons (append (car r) store) (cdr r)))))
-  
+
   (define (anything stream store)
     (define value cadr)
     (if (empty? stream)
@@ -224,8 +233,10 @@
 ;; (printf "Stream: ~v\n" (construct-stream input))
 
 (let ((ans (interp testprog 'A (construct-stream input) '())))
+
   (pprint ans)
   (ptable table)
+;(printf "Table: ~n~v" table)
   (printf "\n\n\n")
   ans)
 
