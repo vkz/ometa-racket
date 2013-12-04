@@ -80,7 +80,7 @@
                (cond
                 ((equal? name 'anything)     (anything stream (fresh-store)))
                 ((memo name stream)       => (lambda (memo-entry)
-                                               (printf "in memo -> ")
+                                               (printf "in memo  -> ")
                                                memo-entry))
                 ((find-rule-by-name name) => (lambda (body)
                                                (memo-add name stream (fail/empty stream (fresh-store))) ;losing store?
@@ -190,6 +190,7 @@
 
 (let ((ans (interp testprog 'A (construct-stream input) '())))
   (pprint ans)
+  (ptable table)
   (printf "\n\n\n")
   ans)
 

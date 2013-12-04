@@ -1,6 +1,7 @@
 #lang racket
 
-(provide pprint)
+(provide (except-out (all-defined-out)
+                     de-index-list))
 
 (define (de-index-list l)
   (define (de-index node)
@@ -42,3 +43,18 @@ eof
 
     [(list val stream store)
      (printf success-fmt val (left-on stream))]))
+
+(define (fail? v) (equal? 'FAIL (car v)))
+(define (success? v) (not (fail? v)))
+(define (value-stream v)
+  (match v
+    [(list 'FAIL _ s __) s]
+    [(list val s _) s]))
+(define (stream-pos0 s) (caar s))
+
+(define (ptable t)
+  (printf "~n~n    Memo:~n")
+  (hash-for-each t (lambda (k v)
+                     (printf "    ~a ~a ==> ~a ~a~n"
+                             (car k) (stream-pos0 (second k))
+                             (car v) (stream-pos0 (value-stream v))))))
