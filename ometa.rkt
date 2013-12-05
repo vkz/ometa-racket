@@ -61,9 +61,9 @@
   (hash-ref table (list rule-name stream) #f))
 (define (memo-add rule-name stream value [lr? #f] [lr-detected? #f])
   (hash-set! table (list rule-name stream) (list value lr? lr-detected?)))
-(define (m-lr/off-detected/on rule-name stream)
-  (define m (memo rule-name stream))
-  (memo-add rule-name stream (m-value m) #f #t))
+;; (define (m-lr/off-detected/on rule-name stream)
+;;   (define m (memo rule-name stream))
+;;   (memo-add rule-name stream (m-value m) #f #t))
 (define LR #t)
 
 (define (interp omprog start stream store)
@@ -81,9 +81,8 @@
   ;; expr = expr - num
   ;;      | num
   (define (rule-apply name stream store)
-
-    ;; we're not currently using the f argument to grow-lr
     (define (grow-lr body)
+      ;; invariant: latest and largest successful match is in cash
       (printf "Growing with table:~n")
       (ptable table)
       (let* ([ans (e body stream store)]
@@ -92,46 +91,61 @@
              [memo-stream (value-stream (m-value memo-entry))])
         (printf "Length of (ans => ~v) (memo-ans => ~v)~n" (length ans-stream) (length memo-stream))
         (if (or (fail? ans)
-                ;; check that ans-stream is longer than memo-stream
                 (>= (length ans-stream) (length memo-stream)))
+            ;; match failed or we're no longer making progress (ans stream not shrinking)
             (begin
               (printf "Grow failed!~n")
               (pprint (m-value memo-entry))
               (m-value memo-entry))
-
-            ;; we're not done; keep growing
+            ;; match succeeded and we're making progress, keep growing the match
             (begin
               (printf "Grow succeeded!~n")
               (memo-add name stream ans (m-lr? memo-entry) (m-lr-detected? memo-entry))
               (grow-lr body)))))
 
+    (define (init-memo/fail-and-align-flags-for-planting-seed)
+      ;; initialize cash entry with 'FAIL, suspect left recursion - set `lr' to #t
+      (memo-add name stream (fail/empty stream (fresh-store)) #t))
+    (define (align-flags-for-growing-and-fail)
+      ;; set lr and lr-detected flags to #f and #t respectively
+      (memo-add name stream (m-value (memo name stream)) #f #t)
+      (fail/empty stream store))
+    (define (left-recursion?)
+      ;; is lr flag set?
+      (m-lr? (memo name stream)))
+
     (unless (equal? name 'anything) (printf "Applying ~v => " name))
     (let (( r (reverse
                (cond
                 ((equal? name 'anything)     (anything stream (fresh-store)))
-                ;; If we're calling rule-apply because we're
-                ;; evaluating the body of a left-recursive rule, then
-                ;; LR will be set and we need to set the lr-detected?
-                ;; flag to true and fail parsing.  Otherwise we just
-                ;; return what we've looked up in the memo table.
+                ;; cash hit
                 ((memo name stream)       => (lambda (memo-entry)
                                                (printf "in memo  -> ")
-                                               (if (m-lr? memo-entry)
-                                                   (begin (m-lr/off-detected/on name stream)
-                                                          (fail/empty stream store)) ;losing store?
+                                               (if (left-recursion?)
+                                                   ;; left recursion detected
+                                                   ;; plant the seed: 'FAIL #1 so that #2 in (alt #1 #2) can match
+                                                   ;; drop the lr flag, so we don't come back to this branch
+                                                   ;; set the lr-detected flag, so we can start growing
+                                                   (align-flags-for-growing-and-fail)
+                                                   ;; not in left recursion
                                                    (m-value memo-entry))))
+                ;; cash miss
                 ((find-rule-by-name name) => (lambda (body)
-                                               (memo-add name stream (fail/empty stream (fresh-store)) LR) ;losing store?
+                                               (init-memo/fail-and-align-flags-for-planting-seed)
+                                               ;; eval the body but this time cash is guaranteed to be hit
+                                               ;; ans holds the seed to be grown if lr-detected is set
                                                (let ((ans (e body stream (fresh-store)))
                                                      (m (memo name stream)))
-                                                 (memo-add name stream ans (m-lr? m) (m-lr-detected? m))
+                                                 ;; commit the seed to cash
+                                                 ;; drop lr flag, preserve lr-detected flag
+                                                 (memo-add name stream ans #f (m-lr-detected? m))
                                                  (if (and (m-lr-detected? m)
                                                           (not (fail? ans)))
-                                                     ;; in left recursion
+                                                     ;; left-recursion with seed, start growing
                                                      (grow-lr body)
                                                      ;; not in left recursion
                                                      ans))))
-                (else                        (error "no such rule " name))))))
+                (else (error "no such rule " name))))))
       (printf "~v~n" (car (reverse r)))
       (reverse (cons (append (car r) store) (cdr r)))))
 
