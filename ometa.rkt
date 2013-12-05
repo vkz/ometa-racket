@@ -81,6 +81,18 @@
   ;; expr = expr - num
   ;;      | num
   (define (rule-apply name stream store)
+
+    (define (init-memo/fail-and-align-flags-for-planting-seed)
+      ;; initialize cash entry with 'FAIL, suspect left recursion - set `lr' to #t
+      (memo-add name stream (fail/empty stream (fresh-store)) #t))
+    (define (align-flags-for-growing-and-fail)
+      ;; set lr and lr-detected flags to #f and #t respectively
+      (memo-add name stream (m-value (memo name stream)) #f #t)
+      (fail/empty stream store))
+    (define (left-recursion?)
+      ;; is lr flag set?
+      (m-lr? (memo name stream)))
+
     (define (grow-lr body)
       ;; invariant: latest and largest successful match is in cash
       (printf "Growing with table:~n")
@@ -102,17 +114,6 @@
               (printf "Grow succeeded!~n")
               (memo-add name stream ans (m-lr? memo-entry) (m-lr-detected? memo-entry))
               (grow-lr body)))))
-
-    (define (init-memo/fail-and-align-flags-for-planting-seed)
-      ;; initialize cash entry with 'FAIL, suspect left recursion - set `lr' to #t
-      (memo-add name stream (fail/empty stream (fresh-store)) #t))
-    (define (align-flags-for-growing-and-fail)
-      ;; set lr and lr-detected flags to #f and #t respectively
-      (memo-add name stream (m-value (memo name stream)) #f #t)
-      (fail/empty stream store))
-    (define (left-recursion?)
-      ;; is lr flag set?
-      (m-lr? (memo name stream)))
 
     (unless (equal? name 'anything) (printf "Applying ~v => " name))
     (let (( r (reverse
@@ -235,9 +236,10 @@
 
 (define input "1-2-3")
 (define testprog
-  `((A (alt (seq (apply A)
-                 (seq (atom #\-)
-                      (apply N)))
+  `((A (alt (seq (seq (bind x (apply A))
+                      (seq (atom #\-)
+                           (bind y (apply N))))
+                 (-> (list x y)))
             (apply N)))
     (N (alt (atom #\1)
             (alt (atom #\2)
@@ -247,10 +249,8 @@
 ;; (printf "Stream: ~v\n" (construct-stream input))
 
 (let ((ans (interp testprog 'A (construct-stream input) '())))
-
   (pprint ans)
   (ptable table)
-;(printf "Table: ~n~v" table)
   (printf "\n\n\n")
   ans)
 
