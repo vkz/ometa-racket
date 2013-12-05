@@ -78,8 +78,6 @@
       => (lambda (rule-pair) (cadr rule-pair)))
      (else #f)))
 
-  ;; expr = expr - num
-  ;;      | num
   (define (rule-apply name stream store)
 
     (define (init-memo/fail-and-align-flags-for-planting-seed)
@@ -234,16 +232,38 @@
       [result result]))
   (e `(apply ,start) stream store))
 
-(define input "1-2-3")
+;; test: nested direct left recursion
+;; expr = expr:x - num:y -> (list x y)
+;;      | expr:x + num:y -> (list x y)
+;;      | num
+(define input "1+2-3")
 (define testprog
-  `((A (alt (seq (seq (bind x (apply A))
-                      (seq (atom #\-)
-                           (bind y (apply N))))
-                 (-> (list x y)))
+  `((A (alt (alt (seq (seq (bind x (apply A))
+                           (seq (atom #\-)
+                                (bind y (apply N))))
+                      (-> (list 'sub x y)))
+                 (seq (seq (bind x (apply A))
+                           (seq (atom #\+)
+                                (bind y (apply N))))
+                      (-> (list 'add x y))))
             (apply N)))
     (N (alt (atom #\1)
             (alt (atom #\2)
                  (atom #\3))))))
+
+;; ;; test: direct left recursion
+;; ;; expr = expr:x - num:y -> (list x y)
+;; ;;      | num
+;; (define input "1-2-3")
+;; (define testprog
+;;   `((A (alt (seq (seq (bind x (apply A))
+;;                       (seq (atom #\-)
+;;                            (bind y (apply N))))
+;;                  (-> (list x y)))
+;;             (apply N)))
+;;     (N (alt (atom #\1)
+;;             (alt (atom #\2)
+;;                  (atom #\3))))))
 
 (printf "Input: ~v\n" input)
 ;; (printf "Stream: ~v\n" (construct-stream input))
