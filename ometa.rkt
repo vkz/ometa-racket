@@ -2,16 +2,22 @@
 (require "helpers.rkt")
 
 (provide construct-stream
-         interp)
+         interp
+         ometa
+         omatch)
 
 ;; ======================================================== ;;
 ;; How to use                                               ;;
 ;; ======================================================== ;;
-;; (interp omprog rule (construct-stream input) store)
-;; - `omprog' is `((rule-name e) ...)
-;; - `input'  is either a string or a list
-;; - `store'  is a list of bindings, '() by default
-;; - `rule'   is a rule-name (symbol) of the starting rule
+;; 1. OMeta program:
+;;
+;;    (define test-program
+;;      (ometa
+;;       (rule-name parsing-expression) ...))
+;;
+;; 2. Input: string or list
+;;
+;; 3. Run it: (omatch test-program starting-rule-name input)
 
 ;; reflective hook to reel the module namespace
 ;; must insert this into user-code before interpreting
@@ -74,7 +80,6 @@
 
 (define (memo-add rule-name stream value [lr? #f] [lr-detected? #f])
   (hash-set! table (list rule-name stream) (list value lr? lr-detected?)))
-
 
 ;; ======================================================== ;;
 ;; Interpreter (match)                                      ;;
@@ -205,7 +210,7 @@
 
         ((~) (match (e (second exp) stream store)
                [(list 'FAIL faillist s st) (list 'NONE stream st)]
-               [(list _ s st) (fail  stream st '())]))
+               [(list _ s st) (fail e stream st '())]))
 
         ((bind) (match (e (third exp) stream store)
                   [(list val s st) (list val s (cons (list (second exp) val) st))]
@@ -233,3 +238,25 @@
       [(list 'FAIL faillist s st) (fail exp stream st faillist)]
       [result result]))
   (e `(apply ,start) stream store))
+
+(define (desugar omprog)
+  (define (desugar-e e)
+    (match e
+      ;; seq* into nested seq
+      [`(seq* ,e1) (desugar-e e1)]
+      [`(seq* ,e1 ,e2) `(seq ,(desugar-e e1) ,(desugar-e e2))]
+      [`(seq* ,e1 ,e2 ...) `(seq ,(desugar-e e1) ,(desugar-e `(seq* ,@e2)))]
+      ;; alt* into nested alt
+      [`(alt* ,e1) (desugar-e e1)]
+      [`(alt* ,e1 ,e2) `(alt ,(desugar-e e1) ,(desugar-e e2))]
+      [`(alt* ,e1 ,e2 ...) `(alt ,(desugar-e e1) ,(desugar-e `(alt* ,@e2)))]
+      [any any]))
+  (define (desugar-rule r)
+    (list (first r) (desugar-e (second r))))
+  (map desugar-rule omprog))
+
+(define-syntax-rule (omatch omprog start input)
+  (interp omprog (quote start) (construct-stream `input) '()))
+
+(define-syntax-rule (ometa rule ...)
+  (desugar `(rule ...)))

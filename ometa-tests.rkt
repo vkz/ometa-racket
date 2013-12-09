@@ -5,140 +5,184 @@
          racket/list
          "ometa.rkt")
 
+;; To write a test case:
+;; ---------------------
+;; (om-test-case
+;;  "Name of the case"
+;;  input               ; string or list
+;;  (ometa ...)         ; ometa program with Start rule
+;;  pattern             ; check-match pattern
+;;  predicate)          ; check-match predicate (optional)
+;; ---------------------
+
+(define-syntax om-test-case
+  (syntax-rules ()
+    [(_ case-name input omprog . template)
+     (test-case case-name
+                (check-match (omatch omprog Start input)
+                             . template))]))
+
+;; ================================================= ;;
+;; Suit                                              ;;
+;; ================================================= ;;
 (define left-recursion-suite
   (test-suite
    "Left recursion."
 
-   (test-case
+   ;; expr = expr:x - num:y -> (list x y)
+   ;;      | expr:x + num:y -> (list x y)
+   ;;      | num
+   (om-test-case
     "Nested direct left recursion."
-    ;; ================================================= ;;
-    ;; expr = expr:x - num:y -> (list x y)               ;;
-    ;;      | expr:x + num:y -> (list x y)               ;;
-    ;;      | num                                        ;;
-    ;; ================================================= ;;
-    (let ((input "1+2-3")
-          (testprog
-           `((A (alt (alt (seq (seq (bind x (apply A))
-                                    (seq (atom #\-)
-                                         (bind y (apply N))))
-                               (-> (list 'sub x y)))
-                          (seq (seq (bind x (apply A))
-                                    (seq (atom #\+)
-                                         (bind y (apply N))))
-                               (-> (list 'add x y))))
-                     (apply N)))
-             (N (alt (atom #\1)
-                     (alt (atom #\2)
-                          (atom #\3)))))))
-      (check-match
-       (interp testprog 'A (construct-stream input) '())
-       (list '(sub (add #\1 #\2) #\3)
-             stream
-             (list-no-order `(x ,_) `(y ,_) _ ...))
-       (null? stream))))
+    "1+2-3"
+    (ometa
+     (Start (alt* (seq* (bind x (apply Start))
+                        (atom #\-)
+                        (bind y (apply N))
+                        (-> (list 'sub x y)))
+                  (seq* (bind x (apply Start))
+                        (atom #\+)
+                        (bind y (apply N))
+                        (-> (list 'add x y)))
+                  (apply N)))
+     (N (alt* (atom #\1)
+              (atom #\2)
+              (atom #\3))))
+    ;; Pattern
+    (list '(sub (add #\1 #\2) #\3)
+          stream
+          (list-no-order `(x ,_) `(y ,_) _ ...))
+    ;; Predicate
+    (null? stream))
 
-   (test-case
+   ;; expr = expr:x - num:y -> (list x y)
+   ;;      | num
+   (om-test-case
     "Direct left recursion"
-    ;; ================================================= ;;
-    ;; expr = expr:x - num:y -> (list x y)               ;;
-    ;;      | num                                        ;;
-    ;; ================================================= ;;
-    (let (( input "1-2-3")
-          (testprog
-           `((A (alt (seq (seq (bind x (apply A))
-                               (seq (atom #\-)
-                                    (bind y (apply N))))
-                          (-> (list x y)))
-                     (apply N)))
-             (N (alt (atom #\1)
-                     (alt (atom #\2)
-                          (atom #\3)))))))
-      (check-match
-       (interp testprog 'A (construct-stream input) '())
-       (list '((#\1 #\2) #\3)
-             stream
-             (list-no-order `(x ,_) `(y ,_) _ ...))
-       (null? stream))))))
+    "1-2-3"
+    (ometa
+     (Start (alt (seq (seq (bind x (apply Start))
+                           (seq (atom #\-)
+                                (bind y (apply N))))
+                      (-> (list x y)))
+                 (apply N)))
+     (N (alt (atom #\1)
+             (alt (atom #\2)
+                  (atom #\3)))))
+    ;; Pattern
+    (list '((#\1 #\2) #\3)
+          stream
+          (list-no-order `(x ,_) `(y ,_) _ ...))
+    ;; Predicate
+    (null? stream))))
 
+;; ================================================= ;;
+;; Suit                                              ;;
+;; ================================================= ;;
 (define list-suite
   (test-suite
    "Matching on structured data (lists)."
 
-   (test-case
+   ;; A = (10:x B:y) -> (list x y)
+   ;; B = (C 12 anything)
+   ;;   | (C 13 anything)
+   ;; C = 12
+   (om-test-case
     "Nested list of numbers."
-    ;; ================================================= ;;
-    ;; A = (10:x B:y) -> (list x y)                      ;;
-    ;; B = (C 12 anything)                               ;;
-    ;;   | (C 13 anything)                               ;;
-    ;; C = 12                                            ;;
-    ;; ================================================= ;;
-    (let (( input `(10 (12 13 15)))
-          (testprog
-           `((A (seq (list (seq (bind x (atom 10))
-                                (bind y (apply B))))
-                     (-> (list x y))))
-             (B (alt (list (seq (apply C)
-                                (seq (atom 12)
-                                     (apply anything))))
-                     (list (seq (apply C)
-                                (seq (atom 13)
-                                     (apply anything))))))
-             (C (atom 12)))))
-      (check-match
-       (interp testprog 'A (construct-stream input) '())
-       (list `(10 (12 13 15))
-             (? null?)
-             (list-no-order `(x ,_) `(y ,_) _ ...)))))
+    (10 (12 13 15))
+    (ometa
+     (Start (seq (list (seq (bind x (atom 10))
+                            (bind y (apply B))))
+                 (-> (list x y))))
+     (B (alt (list (seq (apply C)
+                        (seq (atom 12)
+                             (apply anything))))
+             (list (seq (apply C)
+                        (seq (atom 13)
+                             (apply anything))))))
+     (C (atom 12)))
+    ;; Pattern
+    (list `(10 (12 13 15))
+          (? null?)
+          (list-no-order `(x ,_) `(y ,_) _ ...)))
 
-   (test-case
+   ;; Not idiomatic OMeta - use example above instead
+   ;; Works because of explicit grouping with (seq ...)
+   ;; A = (10:x B:y) -> (list x y)
+   ;; B = ((seq C 12) | (seq C 13) anything)
+   ;; C = 12
+   (om-test-case
     "Nested list of numbers. Alt inside expression."
-    ;; ================================================= ;;
-    ;; Not idiomatic OMeta - use example above instead   ;;
-    ;; Works because of explicit grouping with (seq ...) ;;
-    ;; A = (10:x B:y) -> (list x y)                      ;;
-    ;; B = ((seq C 12) | (seq C 13) anything)            ;;
-    ;; C = 12                                            ;;
-    ;; ================================================= ;;
-    (let (( input `(10 (12 13 15)))
-          (testprog
-           `((A (seq (list (seq (bind x (atom 10))
-                                (bind y (apply B))))
-                     (-> (list x y))))
-             (B (list (seq (alt (seq (apply C) (atom 12))
-                                (seq (apply C) (atom 13)))
-                           (apply anything))))
-             (C (atom 12)))))
-      (check-match
-       (interp testprog 'A (construct-stream input) '())
-       (list `(10 (12 13 15))
-             (? null?)
-             (list-no-order `(x ,_) `(y ,_) _ ...)))))))
+    (10 (12 13 15))
+    (ometa
+     (Start (seq (list (seq (bind x (atom 10))
+                            (bind y (apply B))))
+                 (-> (list x y))))
+     (B (list (seq (alt (seq (apply C) (atom 12))
+                        (seq (apply C) (atom 13)))
+                   (apply anything))))
+     (C (atom 12)))
+    ;; Pattern
+    (list `(10 (12 13 15))
+          (? null?)
+          (list-no-order `(x ,_) `(y ,_) _ ...)))))
 
-
+;; ================================================= ;;
+;; Suit                                              ;;
+;; ================================================= ;;
 (define string-suite
   (test-suite
-   "Matching on lists (stream of characters)."
+   "Matching strings"
 
-   (let ((input "hello")
-         (testprog
-          `((A (seq (bind h (atom #\h))
-                    (seq (seq (bind e (apply C))
-                              (bind ll (apply B)))
-                         (-> (list->string (flatten (list h e ll)))))))
-            (B (many (atom #\l)))
-            (C (alt (atom #\E) (atom #\e)))
-            (D (empty)))))
-     (check-match
-      (interp testprog 'A (construct-stream input) '())
-      (list "hell"
-            stream
-            (list-no-order `(e ,_) `(ll ,_) _ ...))
-      (not (null? stream))))))
+   (om-test-case
+    "Unlimited seq and alt"
+    "abc"
+    (ometa
+     (Start (seq* (bind a (atom #\a))
+                  (bind b (atom #\b))
+                  (bind c (apply B))
+                  (-> (list a b c))))
+     (B (alt* (atom #\a)
+              (atom #\b)
+              (atom #\c))))
+    ;; Pattern
+    (list `(#\a #\b #\c)
+          (? null?)
+          (list-no-order `(a ,_) `(b ,_) `(c ,_))))
 
-(run-tests left-recursion-suite)
-(run-tests list-suite)
+   ;; (om-test-case
+   ;;  "End of stream"
+   ;;  "abc"
+   ;;  (ometa
+   ;;   (Start (seq* (atom #\a)
+   ;;                (~ (apply anything)))))
+   ;;  ;; Pattern
+   ;;  (list 'FAIL _ ...))
+
+   ))
+
+
+;; (define input "abc")
+;; (define input "ab") ;fail
+;; (define input "a")
+;; (define testprog
+;;   ;; look-ahead and end of stream
+;;   (ometa
+;;    (A (seq* (atom #\a) (apply B)))
+;;    (B (alt* (seq* (atom #\b) (~ (~ (atom #\c))))
+;;             (apply END)))
+;;    (END (~ (apply anything)))))
+
+(define delim (list->string (build-list 51 (lambda (n) #\-))))
+
+(printf "Testing strings:~n~a~n" delim)
 (run-tests string-suite)
 
+(printf "Testing lists:~n~a~n" delim)
+(run-tests list-suite)
+
+(printf "Testing left recursion:~n~a~n" delim)
+(run-tests left-recursion-suite)
 
 ;; interesting example
 ;; note the scoping of `x' in *-pattern
