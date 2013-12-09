@@ -1,7 +1,6 @@
 #lang racket
 
-(provide (except-out (all-defined-out)
-                     de-index-list))
+(provide (all-defined-out))
 
 (define (de-index-list l)
   (define (de-index node)
