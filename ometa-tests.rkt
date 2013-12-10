@@ -17,7 +17,7 @@
 
 ;; Make sure your suite is run:
 ;; ===========================
-;; Add your suits to (run-suites ...) form at the end
+;; Add your suits to (run-suites ...) in the `Run tests' section
 
 (define-syntax om-test-case
   (syntax-rules ()
@@ -102,23 +102,44 @@
 
    ;; ------------------------------------------ ;;
 
+   (om-test-case
+    "Empty list."
+    '()
+    (ometa
+     (Start (list (apply End)))
+     (End   (~ (apply anything))))
+    ans
+    (success? ans))
+
+   (om-test-case
+    "Empty list, non-empty rule."
+    '()
+    (ometa
+     (Start (list (list (apply End))))
+     (End   (~ (apply anything))))
+    ans
+    (fail? ans))
+
+
+   ;; ------------------------------------------ ;;
+
    ;; A = (10:x B:y) -> (list x y)
    ;; B = (C 12 anything)
    ;;   | (C 13 anything)
    ;; C = 12
    (om-test-case
     "Nested list of numbers."
-    (10 (12 13 15))
+    '(10 (12 13 15))
     (ometa
-     (Start (seq (list (seq (bind x (atom 10))
-                            (bind y (apply B))))
-                 (-> (list x y))))
-     (B (alt (list (seq (apply C)
-                        (seq (atom 12)
-                             (apply anything))))
-             (list (seq (apply C)
-                        (seq (atom 13)
-                             (apply anything))))))
+     (Start (seq* (list (seq* (bind x (atom 10))
+                              (bind y (apply B))))
+                  (-> (list x y))))
+     (B (alt* (list (seq* (apply C)
+                          (atom 12)
+                          (apply anything)))
+              (list (seq* (apply C)
+                          (atom 13)
+                          (apply anything)))))
      (C (atom 12)))
     ;; Pattern
     (list `(10 (12 13 15))
@@ -134,7 +155,7 @@
    ;; C = 12
    (om-test-case
     "Nested list of numbers. Alt inside expression."
-    (10 (12 13 15))
+    '(10 (12 13 15))
     (ometa
      (Start (seq (list (seq (bind x (atom 10))
                             (bind y (apply B))))
@@ -154,6 +175,25 @@
 (define string-suite
   (test-suite
    "Matching strings"
+
+   ;; ------------------------------------------ ;;
+
+   (om-test-case
+    "Empty stream"
+    ""
+    (ometa
+     (Start (~ (apply anything))))
+    ans
+    (success? ans))
+
+
+   (om-test-case
+    "Empty stream"
+    "a"
+    (ometa
+     (Start (~ (apply anything))))
+    ans
+    (fail? ans))
 
    ;; ------------------------------------------ ;;
 

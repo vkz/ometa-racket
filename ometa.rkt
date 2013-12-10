@@ -70,6 +70,14 @@
    ((list? input) (list `((-1 0) ,(list->stream input))))
    ((string? input) (string->stream input))))
 
+(define (stream? stream)
+  (and (list? stream)
+       (andmap (lambda (p)
+                 (match p
+                   [(list (list (? number?) (? number?)) _) #t]
+                   [rest #f]))
+               stream)))
+
 ;; ======================================================== ;;
 ;; Memo                                                     ;;
 ;; ======================================================== ;;
@@ -235,7 +243,7 @@
                   (define list-pattern (second exp))
                   (define subprog (cons (list temprule list-pattern) rules))
                   (match (car stream)
-                    [(list pos (? list? substream))
+                    [(list pos (? stream? substream))
                      (match (interp subprog temprule substream store)
                        [(list val (? empty? s) st)   (list (de-index-list substream) (cdr stream) st)]
                        [(list 'FAIL faillist s st)   (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
@@ -258,13 +266,26 @@
       [`(alt* ,e1) (desugar-e e1)]
       [`(alt* ,e1 ,e2) `(alt ,(desugar-e e1) ,(desugar-e e2))]
       [`(alt* ,e1 ,e2 ...) `(alt ,(desugar-e e1) ,(desugar-e `(alt* ,@e2)))]
-      [any any]))
+      [`(many ,e1) `(many ,(desugar-e e1))]
+      [`(many1 ,e1) `(many1 ,(desugar-e e1))]
+      [`(bind ,id ,e1) `(bind ,id ,(desugar-e e1))]
+      [`(~ ,e1) `(~ ,(desugar-e e1))]
+      [`(list ,e1) `(list ,(desugar-e e1))]
+      [rest rest]))
   (define (desugar-rule r)
     (list (first r) (desugar-e (second r))))
   (map desugar-rule omprog))
 
 (define-syntax-rule (omatch omprog start input)
-  (interp/fresh-memo omprog (quote start) (construct-stream `input) '()))
+  (interp/fresh-memo omprog (quote start) (construct-stream input) '()))
 
 (define-syntax-rule (ometa rule ...)
   (desugar `(rule ...)))
+
+
+;; (omatch
+;;  (ometa
+;;   (Start (list (list (apply End))))
+;;   (End   (~ (apply anything))))
+;;  Start
+;;  input)
