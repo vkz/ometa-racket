@@ -6,15 +6,18 @@
          "helpers.rkt"
          "ometa.rkt")
 
-;; To write a test case:
-;; ---------------------
+;; Write your test case to a suite:
+;; ===============================
 ;; (om-test-case
 ;;  "Name of the case"
 ;;  input               ; string or list
 ;;  (ometa ...)         ; ometa program with Start rule
 ;;  pattern             ; check-match pattern
 ;;  predicate)          ; check-match predicate (optional)
-;; ---------------------
+
+;; Make sure your suite is run:
+;; ===========================
+;; Add your suits to (run-suites ...) form at the end
 
 (define-syntax om-test-case
   (syntax-rules ()
@@ -23,12 +26,23 @@
                 (check-match (omatch omprog Start input)
                              . template))]))
 
+(define-syntax-rule (run-suites suite ...)
+  (let ((delim (list->string (build-list 51 (lambda (n) #\-)))))
+    (begin
+      (printf "~n Testing ~a~n~a~n" (quote suite) delim)
+      (run-tests suite)
+      (newline))
+    ...))
+
+
 ;; ================================================= ;;
-;; Suit                                              ;;
+;; Suite: left recursion                             ;;
 ;; ================================================= ;;
 (define left-recursion-suite
   (test-suite
    "Left recursion."
+
+   ;; ------------------------------------------ ;;
 
    ;; expr = expr:x - num:y -> (list x y)
    ;;      | expr:x + num:y -> (list x y)
@@ -56,6 +70,8 @@
     ;; Predicate
     (null? stream))
 
+   ;; ------------------------------------------ ;;
+
    ;; expr = expr:x - num:y -> (list x y)
    ;;      | num
    (om-test-case
@@ -78,11 +94,13 @@
     (null? stream))))
 
 ;; ================================================= ;;
-;; Suit                                              ;;
+;; Suite: matching lists                             ;;
 ;; ================================================= ;;
 (define list-suite
   (test-suite
    "Matching on structured data (lists)."
+
+   ;; ------------------------------------------ ;;
 
    ;; A = (10:x B:y) -> (list x y)
    ;; B = (C 12 anything)
@@ -107,6 +125,8 @@
           (? null?)
           (list-no-order `(x ,_) `(y ,_) _ ...)))
 
+   ;; ------------------------------------------ ;;
+
    ;; Not idiomatic OMeta - use example above instead
    ;; Works because of explicit grouping with (seq ...)
    ;; A = (10:x B:y) -> (list x y)
@@ -129,11 +149,13 @@
           (list-no-order `(x ,_) `(y ,_) _ ...)))))
 
 ;; ================================================= ;;
-;; Suit                                              ;;
+;; Suite: matching strings                           ;;
 ;; ================================================= ;;
 (define string-suite
   (test-suite
    "Matching strings"
+
+   ;; ------------------------------------------ ;;
 
    (om-test-case
     "Unlimited seq and alt"
@@ -150,6 +172,8 @@
     (list `(#\a #\b #\c)
           (? null?)
           (list-no-order `(a ,_) `(b ,_) `(c ,_))))
+
+   ;; ------------------------------------------ ;;
 
    (om-test-case
     "End of stream"
@@ -172,6 +196,8 @@
     (and (success? ans)
          (not (null? (value-stream ans)))))
 
+   ;; ------------------------------------------ ;;
+
    (om-test-case
     "Look-ahead and end of stream 2 (fail case)"
     "ab"
@@ -182,6 +208,8 @@
      (END   (~ (apply anything))))
     ans
     (fail? ans))
+
+   ;; ------------------------------------------ ;;
 
    (om-test-case
     "Look-ahead and end of stream 3"
@@ -194,19 +222,9 @@
     ans
     (success? ans))))
 
-(define delim (list->string (build-list 51 (lambda (n) #\-))))
-
-(printf "Testing strings:~n~a~n" delim)
-(run-tests string-suite)
-
-(printf "Testing lists:~n~a~n" delim)
-(run-tests list-suite)
-
-(printf "Testing left recursion:~n~a~n" delim)
-(run-tests left-recursion-suite)
-
-;; interesting example
-;; note the scoping of `x' in *-pattern
-;; mulOp = ’*’                                          -> ’mul’
-;;       | ’/’                                          -> ’div’,
-;; fac   = num:x (mulOp:op num:y -> (x = [op, x, y]))* -> x
+;; ================================================= ;;
+;; Run tests                                         ;;
+;; ================================================= ;;
+(run-suites string-suite
+             list-suite
+             left-recursion-suite)
