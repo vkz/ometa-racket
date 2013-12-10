@@ -103,7 +103,7 @@
    ;; ------------------------------------------ ;;
 
    (om-test-case
-    "Empty list."
+    "Empty list match."
     '()
     (ometa
      (Start (list (apply End)))
@@ -112,7 +112,7 @@
     (success? ans))
 
    (om-test-case
-    "Empty list, non-empty rule."
+    "Empty list don't match."
     '()
     (ometa
      (Start (list (list (apply End))))
@@ -120,6 +120,15 @@
     ans
     (fail? ans))
 
+
+   (om-test-case
+    "Nested empty lists match."
+    '(())
+    (ometa
+     (Start (list (list (apply End))))
+     (End   (~ (apply anything))))
+    ans
+    (success? ans))
 
    ;; ------------------------------------------ ;;
 

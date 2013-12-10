@@ -242,14 +242,16 @@
                   (define temprule (gensym "RULE"))
                   (define list-pattern (second exp))
                   (define subprog (cons (list temprule list-pattern) rules))
-                  (match (car stream)
-                    [(list pos (? stream? substream))
-                     (match (interp subprog temprule substream store)
-                       [(list val (? empty? s) st)   (list (de-index-list substream) (cdr stream) st)]
-                       [(list 'FAIL faillist s st)   (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
-                       [substream-is-too-long (fail/empty stream store)])]
-                    [(list pos (? (compose not list?))) (fail/empty stream store)]
-                    [ oops (error "Stream cell must contain a Value" (car stream))])))
+                  (if (empty? stream) ; matching "insides" of an empty list?
+                      (fail/empty stream store)
+                      (match (car stream)
+                        [(list pos (? stream? substream))
+                         (match (interp subprog temprule substream store)
+                           [(list val (? empty? s) st)   (list (de-index-list substream) (cdr stream) st)]
+                           [(list 'FAIL faillist s st)   (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
+                           [substream-is-too-long (fail/empty stream store)])]
+                        [(list pos (? (compose not list?))) (fail/empty stream store)]
+                        [ oops (error "Stream cell must contain a Value" (car stream))]))))
         )
       [(list 'FAIL faillist s st) (fail exp stream st faillist)]
       [result result]))
