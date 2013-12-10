@@ -271,9 +271,36 @@
     ans
     (success? ans))))
 
+(define scoping-suite
+  (test-suite
+   "Lexical scoping and bindings."
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Lexical scope"
+    '(1 2)
+    (ometa
+     (Start (seq*
+               (list (bind l (apply inside)))
+               (-> l)))
+     (inside (alt*
+              (seq* (bind x (apply anything))
+                    (bind t (apply inside))
+                    (-> (cons x t)))
+              (apply end)))
+     (end    (seq*
+              (~ (apply anything))
+              (-> null))))
+    (list '(1 2) _ ...))
+
+   ;; ------------------------------------------ ;;
+
+   ))
+
 ;; ================================================= ;;
 ;; Run tests                                         ;;
 ;; ================================================= ;;
 (run-suites string-suite
              list-suite
-             left-recursion-suite)
+             left-recursion-suite
+             scoping-suite)
