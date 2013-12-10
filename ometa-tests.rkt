@@ -3,6 +3,7 @@
          rackunit/text-ui
          racket/match
          racket/list
+         "helpers.rkt"
          "ometa.rkt")
 
 ;; To write a test case:
@@ -134,69 +135,64 @@
   (test-suite
    "Matching strings"
 
-   (test-case
+   (om-test-case
     "Unlimited seq and alt"
-    (let ((input "abc")
-          (testprog
-           `((Start (seq* (bind a (atom #\a))
-                          (bind b (atom #\b))
-                          (bind c (apply B))
-                          (-> (list a b c))))
-             (B (alt* (atom #\a)
-                      (atom #\b)
-                      (atom #\c))))))
-      (check-match (interp (desugar testprog) 'Start (construct-stream input) '())
-                  (list `(#\a #\b #\c)
-                        (? null?)
-                        (list-no-order `(a ,_) `(b ,_) `(c ,_))))))
+    "abc"
+    (ometa
+     (Start (seq* (bind a (atom #\a))
+                  (bind b (atom #\b))
+                  (bind c (apply B))
+                  (-> (list a b c))))
+     (B (alt* (atom #\a)
+              (atom #\b)
+              (atom #\c))))
+    ;; Pattern
+    (list `(#\a #\b #\c)
+          (? null?)
+          (list-no-order `(a ,_) `(b ,_) `(c ,_))))
 
-   ;; (test-case
-   ;;  "End of stream"
-   ;;  (let ((input "abc")
-   ;;        (testprog
-   ;;         `((Start (seq* (atom #\a)
-   ;;                        (~ (apply anything)))))))
-   ;;    (check-match (interp (desugar testprog) 'Start (construct-stream input) '())
-   ;;                 (list 'FAIL _ ...))))
+   (om-test-case
+    "End of stream"
+    "abc"
+    (ometa
+     (Start (seq* (atom #\a)
+                  (~ (apply anything)))))
+    ;; Pattern
+    (list 'FAIL _ ...))
 
-   ;; (om-test-case
-   ;;  "Unlimited seq and alt"
-   ;;  "abc"
-   ;;  (ometa
-   ;;   (Start (seq* (bind a (atom #\a))
-   ;;                (bind b (atom #\b))
-   ;;                (bind c (apply B))
-   ;;                (-> (list a b c))))
-   ;;   (B (alt* (atom #\a)
-   ;;            (atom #\b)
-   ;;            (atom #\c))))
-   ;;  ;; Pattern
-   ;;  (list `(#\a #\b #\c)
-   ;;        (? null?)
-   ;;        (list-no-order `(a ,_) `(b ,_) `(c ,_))))
+   (om-test-case
+    "Look-ahead and end of stream 1"
+    "abc"
+    (ometa
+     (Start (seq* (atom #\a) (apply B)))
+     (B     (alt* (seq* (atom #\b) (~ (~ (atom #\c))))
+                  (apply END)))
+     (END   (~ (apply anything))))
+    ans
+    (and (success? ans)
+         (not (null? (value-stream ans)))))
 
-   ;; (om-test-case
-   ;;  "End of stream"
-   ;;  "abc"
-   ;;  (ometa
-   ;;   (Start (seq* (atom #\a)
-   ;;                (~ (apply anything)))))
-   ;;  ;; Pattern
-   ;;  (list 'FAIL _ ...))
+   (om-test-case
+    "Look-ahead and end of stream 2 (fail case)"
+    "ab"
+    (ometa
+     (Start (seq* (atom #\a) (apply B)))
+     (B     (alt* (seq* (atom #\b) (~ (~ (atom #\c))))
+                  (apply END)))
+     (END   (~ (apply anything))))
+    ans
+    (fail? ans))
 
-   ))
-
-
-;; (define input "abc")
-;; (define input "ab") ;fail
-;; (define input "a")
-;; (define testprog
-;;   ;; look-ahead and end of stream
-;;   (ometa
-;;    (A (seq* (atom #\a) (apply B)))
-;;    (B (alt* (seq* (atom #\b) (~ (~ (atom #\c))))
-;;             (apply END)))
-;;    (END (~ (apply anything)))))
+   (om-test-case
+    "Look-ahead and end of stream 3"
+    "a"
+    (ometa
+     (Start (seq* (atom #\a) (apply B)))
+     (B     (alt* (seq* (atom #\b) (~ (~ (atom #\c))))
+                  (apply END)))
+     (END   (~ (apply anything))))
+    ans
+    (success? ans))))
 
 (define delim (list->string (build-list 51 (lambda (n) #\-))))
 

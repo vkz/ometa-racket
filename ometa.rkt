@@ -76,6 +76,9 @@
 (define table (make-hash))
 ;; table: (rule-name stream) -> (value lr? lr-detected?)
 
+(define (fresh-table!)
+  (set! table (make-hash)))
+
 (define (memo rule-name stream)
   (hash-ref table (list rule-name stream) #f))
 
@@ -85,6 +88,10 @@
 ;; ======================================================== ;;
 ;; Interpreter (match)                                      ;;
 ;; ======================================================== ;;
+(define (interp/fresh-memo omprog start-rule stream [store '()])
+  (fresh-table!)
+  (interp omprog start-rule stream store))
+
 (define (interp omprog start stream store)
   ;; -> (Value Stream Store)
   ;; -> ('FAIL fail-list Stream Store)
@@ -257,7 +264,7 @@
   (map desugar-rule omprog))
 
 (define-syntax-rule (omatch omprog start input)
-  (interp omprog (quote start) (construct-stream `input) '()))
+  (interp/fresh-memo omprog (quote start) (construct-stream `input) '()))
 
 (define-syntax-rule (ometa rule ...)
   (desugar `(rule ...)))
