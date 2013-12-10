@@ -3,6 +3,7 @@
 
 (provide construct-stream
          interp
+         desugar
          ometa
          omatch)
 

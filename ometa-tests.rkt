@@ -134,21 +134,46 @@
   (test-suite
    "Matching strings"
 
-   (om-test-case
+   (test-case
     "Unlimited seq and alt"
-    "abc"
-    (ometa
-     (Start (seq* (bind a (atom #\a))
-                  (bind b (atom #\b))
-                  (bind c (apply B))
-                  (-> (list a b c))))
-     (B (alt* (atom #\a)
-              (atom #\b)
-              (atom #\c))))
-    ;; Pattern
-    (list `(#\a #\b #\c)
-          (? null?)
-          (list-no-order `(a ,_) `(b ,_) `(c ,_))))
+    (let ((input "abc")
+          (testprog
+           `((Start (seq* (bind a (atom #\a))
+                          (bind b (atom #\b))
+                          (bind c (apply B))
+                          (-> (list a b c))))
+             (B (alt* (atom #\a)
+                      (atom #\b)
+                      (atom #\c))))))
+      (check-match (interp (desugar testprog) 'Start (construct-stream input) '())
+                  (list `(#\a #\b #\c)
+                        (? null?)
+                        (list-no-order `(a ,_) `(b ,_) `(c ,_))))))
+
+   ;; (test-case
+   ;;  "End of stream"
+   ;;  (let ((input "abc")
+   ;;        (testprog
+   ;;         `((Start (seq* (atom #\a)
+   ;;                        (~ (apply anything)))))))
+   ;;    (check-match (interp (desugar testprog) 'Start (construct-stream input) '())
+   ;;                 (list 'FAIL _ ...))))
+
+   ;; (om-test-case
+   ;;  "Unlimited seq and alt"
+   ;;  "abc"
+   ;;  (ometa
+   ;;   (Start (seq* (bind a (atom #\a))
+   ;;                (bind b (atom #\b))
+   ;;                (bind c (apply B))
+   ;;                (-> (list a b c))))
+   ;;   (B (alt* (atom #\a)
+   ;;            (atom #\b)
+   ;;            (atom #\c))))
+   ;;  ;; Pattern
+   ;;  (list `(#\a #\b #\c)
+   ;;        (? null?)
+   ;;        (list-no-order `(a ,_) `(b ,_) `(c ,_))))
 
    ;; (om-test-case
    ;;  "End of stream"
