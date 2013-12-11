@@ -60,10 +60,10 @@
     "Simple binding."
     '(1 2)
     (ometa
-     (Start (list
-             (seq* (bind x (atom 1))
-                   (bind y (atom 2))
-                   (-> (list))))))
+     (Start (seq* (list
+                   (seq* (bind x (atom 1))
+                         (bind y (atom 2))))
+                  (-> (list 1 2)))))
     (list (list 1 2)
           _
           (list-no-order `(x ,_) `(y ,_) _ ...)))
@@ -113,14 +113,14 @@
     "Direct left recursion"
     "1-2-3"
     (ometa
-     (Start (alt (seq (seq (bind x (apply Start))
-                           (seq (atom #\-)
-                                (bind y (apply N))))
-                      (-> (list x y)))
-                 (apply N)))
-     (N (alt (atom #\1)
-             (alt (atom #\2)
-                  (atom #\3)))))
+     (Start (alt* (seq* (bind x (apply Start))
+                        (atom #\-)
+                        (bind y (apply N))
+                        (-> (list x y)))
+                  (apply N)))
+     (N (alt* (atom #\1)
+              (atom #\2)
+              (atom #\3))))
     ;; Pattern
     (list '((#\1 #\2) #\3)
           stream
@@ -201,12 +201,12 @@
     "Nested list of numbers. Alt inside expression."
     '(10 (12 13 15))
     (ometa
-     (Start (seq (list (seq (bind x (atom 10))
-                            (bind y (apply B))))
-                 (-> (list x y))))
-     (B (list (seq (alt (seq (apply C) (atom 12))
-                        (seq (apply C) (atom 13)))
-                   (apply anything))))
+     (Start (seq* (list (seq* (bind x (atom 10))
+                              (bind y (apply B))))
+                  (-> (list x y))))
+     (B (list (seq* (alt* (seq* (apply C) (atom 12))
+                          (seq* (apply C) (atom 13)))
+                    (apply anything))))
      (C (atom 12)))
     ;; Pattern
     (list `(10 (12 13 15))
