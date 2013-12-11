@@ -132,7 +132,7 @@
     (define value cadr)
     (if (empty? stream)
         (fail/empty stream store)
-        (list (value (car stream)) (cdr stream) store)))
+        (list (de-index-list (value (car stream))) (cdr stream) store)))
 
   (define (rule-apply name stream store)
     (define (init-memo/fail-and-align-flags-for-planting-seed)

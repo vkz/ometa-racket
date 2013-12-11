@@ -44,7 +44,7 @@
   (run-suites string-suite
               list-suite
               left-recursion-suite
-              ;;             scoping-suite
+              ;scoping-suite
               binding-suite
               ))
 
@@ -63,10 +63,28 @@
      (Start (seq* (list
                    (seq* (bind x (atom 1))
                          (bind y (atom 2))))
-                  (-> (list 1 2)))))
+                  (-> (list x y)))))
     (list (list 1 2)
           _
           (list-no-order `(x ,_) `(y ,_) _ ...)))
+
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Binding call to apply."
+    '(1 (2 3))
+    (ometa
+     (Start (seq*
+             (list
+              (seq*
+               (bind x (apply anything))
+               (bind y (alt* (atom 3)
+                             (apply Start)))))
+             (-> (list x y)))))
+    (list '(1 (2 3))
+          _
+          (list-no-order `(x ,_) `(y ,_) _ ...)))
+
 
    )
   )
