@@ -27,9 +27,11 @@
                              . template))]))
 
 (define-syntax-rule (run-suites suite ...)
-  (let ((delim (list->string (build-list 51 (lambda (n) #\-)))))
+  (let ((delim (lambda (l) (list->string (build-list l (lambda (n) #\-))))))
     (begin
-      (printf "~n Testing ~a~n~a~n" (quote suite) delim)
+      (printf "~n~a~n~a~n"
+              (quote suite)
+              (delim (string-length (symbol->string (quote suite)))))
       (run-tests suite)
       (newline))
     ...))
