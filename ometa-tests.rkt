@@ -6,6 +6,8 @@
          "helpers.rkt"
          "ometa.rkt")
 
+(debug-off!)
+
 ;; Add your test cases to a suite:
 ;; ===============================
 ;; (om-test-case
@@ -44,7 +46,7 @@
   (run-suites string-suite
               list-suite
               left-recursion-suite
-              ;scoping-suite
+              scoping-suite
               binding-suite
               ))
 
@@ -350,6 +352,30 @@
     (list '(1 2) _ ...))
 
    ;; ------------------------------------------ ;;
+   (om-test-case
+    "Flatten a nested list."
+    '(1 (2 (3 4)) (((5)) 6))
+    (ometa
+     (Start (seq*
+             (list (bind xs (apply inside)))
+             (-> xs)))
+     (inside  (alt* (seq*
+                     (list (bind xs (apply inside)))
+                     (bind ys (apply inside))
+                     (-> (append xs ys)))
+                    (seq*
+                     (bind x (apply anything))
+                     (bind xs (apply inside))
+                     (-> (cons x xs)))
+                    (seq*
+                     (apply end)
+                     (-> null))))
+     (end  (seq*
+            (~ (apply anything))
+            (-> null))))
+    (list '(1 2 3 4 5 6)
+          (? empty?)
+          _))
 
    ))
 

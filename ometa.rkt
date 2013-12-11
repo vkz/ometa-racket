@@ -5,8 +5,12 @@
          interp
          desugar
          ometa
-         omatch)
+         omatch
+         debug-off!)
 
+(define debug-count! 0)
+(define debug? #t)
+(define (debug-off!) (set! debug? #f))
 ;; ======================================================== ;;
 ;; How to use                                               ;;
 ;; ======================================================== ;;
@@ -192,12 +196,31 @@
                 (else (error "no such rule " name))))))
       (reverse (cons (append (car r) store) (cdr r)))))
 
+  (define (append-old-store ans old-store)
+    (let* ((rev-ans (reverse ans))
+           (new-store (car rev-ans)))
+      (reverse (cons (append old-store new-store) (cdr rev-ans)))))
+
   (define (e exp stream store)
     ;; -> ((index value) stream store)
     ;; -> ('FAIL fail-list stream store)
     (match
       (case (exp-name exp)
-        ((apply) (rule-apply (cadr exp) stream store))
+        ((apply) (begin
+                   (when debug?
+                     (unless (equal? (cadr exp) 'anything)
+                       (printf "~a   |~a -stream ~v -store ~v\n"
+                               (list->string (build-list debug-count! (lambda (n) #\>)))
+                               (cadr exp) (de-index-list stream) store)
+                       (set! debug-count! (add1 debug-count!))))
+                   (let ((ans (rule-apply (cadr exp) stream (fresh-store))))
+                     (when debug?
+                       (unless (equal? (cadr exp) 'anything)
+                         (set! debug-count! (sub1 debug-count!))
+                         (printf "~a   |~a -stream ~v -store ~v -ans ~v\n"
+                                 (list->string (build-list debug-count! (lambda (n) #\<)))
+                                 (cadr exp) (de-index-list stream) (append store (last ans)) (car ans))))
+                     (append-old-store ans store))))
 
         ((empty) (list 'NONE stream store))
 
