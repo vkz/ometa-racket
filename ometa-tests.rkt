@@ -6,7 +6,7 @@
          "helpers.rkt"
          "ometa.rkt")
 
-;; Write your test case to a suite:
+;; Add your test cases to a suite:
 ;; ===============================
 ;; (om-test-case
 ;;  "Name of the case"
@@ -15,9 +15,9 @@
 ;;  pattern             ; check-match pattern
 ;;  predicate)          ; check-match predicate (optional)
 
-;; Make sure your suite is run:
+;; Make them run:
 ;; ===========================
-;; Add your suits to (run-suites ...) in the `Run tests' section
+;; Add your suits to (run-suites ...)
 
 (define-syntax om-test-case
   (syntax-rules ()
@@ -27,15 +27,49 @@
                              . template))]))
 
 (define-syntax-rule (run-suites suite ...)
-  (let ((delim (lambda (l) (list->string (build-list l (lambda (n) #\-))))))
-    (begin
-      (printf "~n~a~n~a~n"
-              (quote suite)
-              (delim (string-length (symbol->string (quote suite)))))
-      (run-tests suite)
-      (newline))
-    ...))
+  (lambda ()
+    (let ((delim (lambda (l) (list->string (build-list l (lambda (n) #\*))))))
+      (begin
+        (printf "~n~a~n~a~n"
+                (quote suite)
+                (delim (string-length (symbol->string (quote suite)))))
+        (run-tests suite)
+        (newline))
+      ...)))
 
+;; ================================================= ;;
+;; Add your suites here                              ;;
+;; ================================================= ;;
+(define suites-to-run
+  (run-suites string-suite
+              list-suite
+              left-recursion-suite
+              ;;             scoping-suite
+              binding-suite
+              ))
+
+;; ================================================= ;;
+;; Suite: bindings                                   ;;
+;; ================================================= ;;
+(define binding-suite
+  (test-suite
+   "Binding."
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Simple binding."
+    '(1 2)
+    (ometa
+     (Start (list
+             (seq* (bind x (atom 1))
+                   (bind y (atom 2))
+                   (-> (list))))))
+    (list (list 1 2)
+          _
+          (list-no-order `(x ,_) `(y ,_) _ ...)))
+
+   )
+  )
 
 ;; ================================================= ;;
 ;; Suite: left recursion                             ;;
@@ -45,7 +79,6 @@
    "Left recursion."
 
    ;; ------------------------------------------ ;;
-
    ;; expr = expr:x - num:y -> (list x y)
    ;;      | expr:x + num:y -> (list x y)
    ;;      | num
@@ -273,6 +306,9 @@
     ans
     (success? ans))))
 
+;; ================================================= ;;
+;; Suite: scope                                      ;;
+;; ================================================= ;;
 (define scoping-suite
   (test-suite
    "Lexical scoping and bindings."
@@ -302,8 +338,4 @@
 ;; ================================================= ;;
 ;; Run tests                                         ;;
 ;; ================================================= ;;
-(run-suites string-suite
-             list-suite
-             left-recursion-suite
-;;             scoping-suite
-             )
+(suites-to-run)
