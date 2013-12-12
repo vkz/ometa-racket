@@ -2,6 +2,12 @@
 
 (provide (all-defined-out))
 
+(define (find-rule-by-name  name rules)
+  (cond
+   ((assoc name rules)
+    => (lambda (rule-pair) (cadr rule-pair)))
+   (else #f)))
+
 ;; ======================================================== ;;
 ;; Stream constructors                                      ;;
 ;; ======================================================== ;;
@@ -27,6 +33,13 @@
                    [rest #f]))
                stream)))
 
+(define (de-index-list l)
+  (define (de-index node)
+    (cond
+     ((list? (cadr node)) (de-index-list (cadr node)))
+     (else (cadr node))))
+  (if (list? l) (map de-index l) l))
+
 ;; ======================================================== ;;
 ;; Memo                                                     ;;
 ;; ======================================================== ;;
@@ -42,12 +55,9 @@
 (define (memo-add rule-name stream value [lr? #f] [lr-detected? #f])
   (hash-set! table (list rule-name stream) (list value lr? lr-detected?)))
 
-(define (find-rule-by-name  name rules)
-  (cond
-   ((assoc name rules)
-    => (lambda (rule-pair) (cadr rule-pair)))
-   (else #f)))
-
+;; ======================================================== ;;
+;; Store                                                    ;;
+;; ======================================================== ;;
 (define fresh-store (lambda () '()))
 
 (define (store->env a-list)
@@ -60,14 +70,6 @@
   (let* ((rev-ans (reverse ans))
          (new-store (car rev-ans)))
     (reverse (cons (append old-store new-store) (cdr rev-ans)))))
-
-(define (de-index-list l)
-  (define (de-index node)
-    (cond
-     ((list? (cadr node)) (de-index-list (cadr node)))
-     (else (cadr node))))
-  (if (list? l) (map de-index l) l))
-
 
 ;; ======================================================== ;;
 ;; Pretty printing                                          ;;
@@ -106,6 +108,16 @@ eof
     [(list val stream store)
      (printf success-fmt val (left-on stream))]))
 
+(define (ptable t)
+  (printf "~n~n    Memo:~n")
+  (hash-for-each t (lambda (k m)
+                     (printf "    ~a ~a ==> ~v ~a~n"
+                             (car k) (stream-pos0 (second k))
+                             (car (m-value m)) (stream-pos0 (value-stream (m-value m)))))))
+
+;; ======================================================== ;;
+;; Getters                                                  ;;
+;; ======================================================== ;;
 (define (fail? v) (equal? 'FAIL (car v)))
 (define (success? v) (not (fail? v)))
 (define (value-stream v)
@@ -118,23 +130,22 @@ eof
 (define m-lr? second)
 (define m-lr-detected? third)
 
-(define (ptable t)
-  (printf "~n~n    Memo:~n")
-  (hash-for-each t (lambda (k m)
-                     (printf "    ~a ~a ==> ~v ~a~n"
-                             (car k) (stream-pos0 (second k))
-                             (car (m-value m)) (stream-pos0 (value-stream (m-value m)))))))
-
 ;; ======================================================== ;;
 ;; Debugging                                                ;;
 ;; ======================================================== ;;
 (define debug? #t)
 (define (debug-on?) debug?)
-(define (debug-off!) (set! debug-count! 0) (set! debug? #f))
-(define (debug-on!) (set! debug-count! 0) (set! debug? #t))
+(define (debug-off!)
+  (set! debug-count! 0)
+  (set! debug? #f))
+(define (debug-on!)
+  (set! debug-count! 0)
+  (set! debug? #t))
 (define debug-count! 0)
-(define (debug-count-inc) (set! debug-count! (add1 debug-count!)))
-(define (debug-count-dec) (set! debug-count! (sub1 debug-count!)))
+(define (debug-count-inc)
+  (set! debug-count! (add1 debug-count!)))
+(define (debug-count-dec)
+  (set! debug-count! (sub1 debug-count!)))
 
 (define (debug-pre-apply rule-name stream store)
   (when (debug-on?)

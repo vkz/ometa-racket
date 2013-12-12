@@ -93,16 +93,21 @@
         (list (de-index-list (value (car stream))) (cdr stream) store)))
 
   (define (rule-apply name stream store)
+
+    ;; initialize cash entry with 'FAIL
+    ;; suspect left recursion: set `lr' to #t
     (define (init-memo/fail-and-align-flags-for-planting-seed)
-      ;; initialize cash entry with 'FAIL, suspect left recursion - set `lr' to #t
       (memo-add name stream (fail/empty stream (fresh-store)) #t))
+
+    ;; set lr and lr-detected flags to #f and #t respectively
     (define (align-flags-for-growing-and-fail)
-      ;; set lr and lr-detected flags to #f and #t respectively
       (memo-add name stream (m-value (memo name stream)) #f #t)
       (fail/empty stream store))
+
+    ;; is lr flag set?
     (define (left-recursion?)
-      ;; is lr flag set?
       (m-lr? (memo name stream)))
+
     (define (grow-lr body)
       ;; invariant: latest and largest successful match is in cash
       (let* ([ans (e body stream store)]
@@ -118,36 +123,39 @@
             (begin
               (memo-add name stream ans (m-lr? memo-entry) (m-lr-detected? memo-entry))
               (grow-lr body)))))
-    (let (( r (reverse
-               (cond
-                ((equal? name 'anything)     (anything stream (fresh-store)))
-                ;; cash hit
-                ((memo name stream)       => (lambda (memo-entry)
-                                               (if (left-recursion?)
-                                                   ;; left recursion detected
-                                                   ;; plant the seed: 'FAIL #1 so that #2 in (alt #1 #2) can match
-                                                   ;; drop the lr flag, so we don't come back to this branch
-                                                   ;; set the lr-detected flag, so we can start growing
-                                                   (align-flags-for-growing-and-fail)
-                                                   ;; not in left recursion
-                                                   (m-value memo-entry))))
-                ;; cash miss
-                ((find-rule-by-name name rules) => (lambda (body)
-                                                     (init-memo/fail-and-align-flags-for-planting-seed)
-                                                     ;; eval the body but this time cash is guaranteed to be hit
-                                                     ;; ans holds the seed to be grown if lr-detected is set
-                                                     (let ((ans (e body stream (fresh-store)))
-                                                           (m (memo name stream)))
-                                                       ;; commit the seed to cash
-                                                       ;; drop lr flag, preserve lr-detected flag
-                                                       (memo-add name stream ans #f (m-lr-detected? m))
-                                                       (if (and (m-lr-detected? m)
-                                                                (not (fail? ans)))
-                                                           ;; left-recursion with seed, start growing
-                                                           (grow-lr body)
-                                                           ;; not in left recursion
-                                                           ans))))
-                (else (error "no such rule " name))))))
+
+    ;; reverse trickery is to insure proper variable shadowing
+    (let ((r (reverse
+              (cond
+               ((equal? name 'anything) (anything stream (fresh-store)))
+               ;; cash hit
+               ((memo name stream)
+                => (lambda (memo-entry)
+                     (if (left-recursion?)
+                         ;; left recursion detected! Plant the seed: 'FAIL #1 so that #2 in (alt
+                         ;; #1 #2) can match, drop the lr flag so we don't come back to this
+                         ;; branch, set the lr-detected flag, so we can start growing
+                         (align-flags-for-growing-and-fail)
+                         ;; not in left recursion
+                         (m-value memo-entry))))
+               ;; cash miss
+               ((find-rule-by-name name rules)
+                => (lambda (body)
+                     (init-memo/fail-and-align-flags-for-planting-seed)
+                     ;; eval the body but this time cash is guaranteed to be hit
+                     ;; ans holds the seed to be grown if lr-detected is set
+                     (let ((ans (e body stream (fresh-store)))
+                           (m (memo name stream)))
+                       ;; commit the seed to cash
+                       ;; drop lr flag, preserve lr-detected flag
+                       (memo-add name stream ans #f (m-lr-detected? m))
+                       (if (and (m-lr-detected? m)
+                                (not (fail? ans)))
+                           ;; left-recursion with seed, start growing
+                           (grow-lr body)
+                           ;; not in left recursion
+                           ans))))
+               (else (error "no such rule " name))))))
       (reverse (cons (append (car r) store) (cdr r)))))
 
   (define (e exp stream store)
@@ -209,8 +217,8 @@
                       (match (car stream)
                         [(list pos (? stream? substream))
                          (match (interp subprog temprule substream store)
-                           [(list val (? empty? s) st)   (list (de-index-list substream) (cdr stream) st)]
-                           [(list 'FAIL faillist s st)   (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
+                           [(list val (? empty? s) st) (list (de-index-list substream) (cdr stream) st)]
+                           [(list 'FAIL faillist s st) (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
                            [substream-is-too-long (fail/empty stream store)])]
                         [(list pos (? (compose not list?))) (fail/empty stream store)]
                         [ oops (error "Stream cell must contain a Value" (car stream))]))))
