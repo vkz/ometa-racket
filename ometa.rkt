@@ -2,6 +2,7 @@
 (require "helpers.rkt")
 (provide interp
          desugar
+         desugar-e
          ometa
          omatch)
 
@@ -92,7 +93,7 @@
         (fail/empty stream store)
         (list (de-index-list (value (car stream))) (cdr stream) store)))
 
-  (define (rule-apply name stream store)
+  (define (rule-apply name args stream store)
 
     ;; initialize cash entry with 'FAIL
     ;; suspect left recursion: set `lr' to #t
@@ -139,7 +140,7 @@
                          ;; not in left recursion
                          (m-value memo-entry))))
                ;; cash miss
-               ((find-rule-by-name name rules)
+               ((find-rule-by-name name rules args)
                 => (lambda (body)
                      (init-memo/fail-and-align-flags-for-planting-seed)
                      ;; eval the body but this time cash is guaranteed to be hit
@@ -163,10 +164,12 @@
     ;; -> ('FAIL fail-list stream store)
     (match
       (case (car exp)
-        ((apply) (begin
-                   (debug-pre-apply (cadr exp) stream store)
-                   (let ((ans (rule-apply (cadr exp) stream (fresh-store))))
-                     (debug-post-apply (cadr exp) stream store ans)
+        ((apply) (let ((rule-name (cadr exp))
+                       (rule-args (cddr exp)))
+                   (debug-pre-apply rule-name stream store)
+                   (let ((ans
+                          (rule-apply rule-name rule-args stream (fresh-store))))
+                     (debug-post-apply rule-name stream store ans)
                      (append-old-store ans store))))
 
         ((empty) (list 'NONE stream store))
@@ -235,23 +238,48 @@
       [result result]))
   (e `(apply ,start) stream store))
 
+(define (desugar-e e)
+  (match e
+    ;; seq* into nested seq
+    [`(seq* ,e1) (desugar-e e1)]
+    [`(seq* ,e1 ,e2) `(seq ,(desugar-e e1) ,(desugar-e e2))]
+    [`(seq* ,e1 ,e2 ...) `(seq ,(desugar-e e1) ,(desugar-e `(seq* ,@e2)))]
+    ;; alt* into nested alt
+    [`(alt* ,e1) (desugar-e e1)]
+    [`(alt* ,e1 ,e2) `(alt ,(desugar-e e1) ,(desugar-e e2))]
+    [`(alt* ,e1 ,e2 ...) `(alt ,(desugar-e e1) ,(desugar-e `(alt* ,@e2)))]
+    [`(many ,e1) `(many ,(desugar-e e1))]
+    [`(many1 ,e1) `(many1 ,(desugar-e e1))]
+    [`(bind ,id ,e1) `(bind ,id ,(desugar-e e1))]
+    [`(~ ,e1) `(~ ,(desugar-e e1))]
+    [`(list ,e1) `(list ,(desugar-e e1))]
+    [rest rest]))
+
 (define (desugar omprog)
-  (define (desugar-e e)
-    (match e
-      ;; seq* into nested seq
-      [`(seq* ,e1) (desugar-e e1)]
-      [`(seq* ,e1 ,e2) `(seq ,(desugar-e e1) ,(desugar-e e2))]
-      [`(seq* ,e1 ,e2 ...) `(seq ,(desugar-e e1) ,(desugar-e `(seq* ,@e2)))]
-      ;; alt* into nested alt
-      [`(alt* ,e1) (desugar-e e1)]
-      [`(alt* ,e1 ,e2) `(alt ,(desugar-e e1) ,(desugar-e e2))]
-      [`(alt* ,e1 ,e2 ...) `(alt ,(desugar-e e1) ,(desugar-e `(alt* ,@e2)))]
-      [`(many ,e1) `(many ,(desugar-e e1))]
-      [`(many1 ,e1) `(many1 ,(desugar-e e1))]
-      [`(bind ,id ,e1) `(bind ,id ,(desugar-e e1))]
-      [`(~ ,e1) `(~ ,(desugar-e e1))]
-      [`(list ,e1) `(list ,(desugar-e e1))]
-      [rest rest]))
-  (define (desugar-rule r)
-    (list (first r) (desugar-e (second r))))
+  (define (desugar-rule rule)
+    (match rule
+      [(list name ids ... body)
+       ;; =>
+       `(,name ,@ids ,(desugar-e body))]
+      [_
+       ;; =>
+       (error "Bad syntax in rule " rule)]))
   (map desugar-rule omprog))
+
+(define (find-rule-by-name  name rules [args '()])
+  ;; find a rule (name id ... body) and return
+  ;; its body extended with ids bound to args
+  ;; -> (desugar-e (seq* (bind id arg) ... body))
+  (cond
+   ((assoc name rules)
+    => (lambda (rule)
+         (match rule
+           [(list name ids ... body)
+            ;; =>
+            (let* ((bind (lambda (id arg) `(bind ,id (-> ,arg))))
+                   (bindings (map bind ids args)))
+              (desugar-e `(seq* ,@bindings ,body)))]
+           [_
+            ;; =>
+            (error "Bad syntax in rule " rule)])))
+   (else #f)))

@@ -49,6 +49,7 @@
               scoping-suite
               binding-suite
               semantic-suite
+              parameterized-rules-suite
               ))
 
 ;; ================================================= ;;
@@ -385,7 +386,7 @@
 ;; ================================================= ;;
 (define semantic-suite
   (test-suite
-   "Actions and predicates"
+   "Actions and predicates."
 
    ;; ------------------------------------------ ;;
    (om-test-case
@@ -424,6 +425,43 @@
     ans
     (fail? ans))))
 
+;; ================================================= ;;
+;; Semantic actions and predicates                   ;;
+;; ================================================= ;;
+(define parameterized-rules-suite
+  (test-suite
+   "Parameterized rules."
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Lower-case letters character class."
+    "f"
+    (ometa
+     (char-range x y
+                 (seq* (bind c (apply anything))
+                       (->? (and (char? c)
+                                 (char<=? x c y)))
+                       (-> c)))
+     (Start (seq* (bind c (apply char-range #\a #\z))
+                  (-> c))))
+    (list #\f _ _))
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Lower-case letters character class."
+    "F"
+    (ometa
+     (char-range x y
+                 (seq* (bind c (apply anything))
+                       (->? (and (char? c)
+                                 (char<=? x c y)))
+                       (-> c)))
+     (Start (seq* (bind c (apply char-range #\a #\z))
+                  (-> c))))
+    ans
+    (fail? ans))
+
+))
 
 
 ;; ================================================= ;;

@@ -2,12 +2,6 @@
 
 (provide (all-defined-out))
 
-(define (find-rule-by-name  name rules)
-  (cond
-   ((assoc name rules)
-    => (lambda (rule-pair) (cadr rule-pair)))
-   (else #f)))
-
 ;; ======================================================== ;;
 ;; Stream constructors                                      ;;
 ;; ======================================================== ;;
