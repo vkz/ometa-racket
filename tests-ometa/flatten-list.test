@@ -1,6 +1,0 @@
-ometa F {
-    flatten = (inside:xs)           -> xs,
-    inside  = (inside:xs) inside:ys -> (append xs ys),
-            | :x <inside>:xs        -> (cons x xs),
-            | ( )                   -> nil
- }
