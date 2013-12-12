@@ -1,34 +1,26 @@
 #lang racket
 (require "helpers.rkt")
-
-(provide construct-stream
-         interp
+(provide interp
          desugar
          ometa
-         omatch
-         debug-off!)
+         omatch)
 
-(define debug-count! 0)
-(define debug? #t)
-(define (debug-off!) (set! debug? #f))
 ;; ======================================================== ;;
 ;; How to use                                               ;;
 ;; ======================================================== ;;
-;; 1. OMeta program:
+;; 1. Define OMeta program:
 ;;
 ;;    (define test-program
 ;;      (ometa
 ;;       (rule-name parsing-expression) ...))
 ;;
-;; 2. Input: string or list
+;; 2. Run it:
 ;;
-;; 3. Run it: (omatch test-program starting-rule-name input)
-
-;; reflective hook to reel the module namespace
-;; must insert this into user-code before interpreting
-;; otherwise `eval' won't have bindings from user top-level
-(define-namespace-anchor a)
-(define ns (namespace-anchor->namespace a))
+;;     (omatch test-program
+;;             starting-rule-name
+;;             input)
+;;
+;;    Where input is a string or a list.
 
 ;; ======================================================== ;;
 ;; Grammar                                                  ;;
@@ -43,59 +35,34 @@
 ;;     (bind x e)
 ;;     (-> t)
 ;;     (list e )
-
+;;
 ;; Value == a
 ;;         (Value ...)
 ;;          none
-
+;;
 ;; Stream == ((index Value) ...)
 ;; index  == (num num)
-
+;;
 ;; a == number
 ;;      character (#\c)
 ;;      string    ("string")
-
+;;
 ;; store == ((symbol? Value) ...)
 
-;; ======================================================== ;;
-;; Stream constructors                                      ;;
-;; ======================================================== ;;
-(define (construct-stream input)
-  (define (list->stream l [depth 0])
-    (build-list (length l)
-                (lambda (n)
-                  `((,depth ,n) ,(cond
-                                  ((list? (list-ref l n)) (list->stream (list-ref l n) n))
-                                  (else (list-ref l n) ))))))
-  (define (string->stream s [depth 0])
-    (build-list (string-length s)
-                (lambda (n) `((,depth ,n) ,(string-ref s n)))))
-  (cond
-   ((list? input) (list `((-1 0) ,(list->stream input))))
-   ((string? input) (string->stream input))))
-
-(define (stream? stream)
-  (and (list? stream)
-       (andmap (lambda (p)
-                 (match p
-                   [(list (list (? number?) (? number?)) _) #t]
-                   [rest #f]))
-               stream)))
+;; reflective hook to reel the module namespace
+;; must insert this into user-code before interpreting
+;; otherwise `eval' won't have bindings from user top-level
+(define-namespace-anchor a)
+(define ns (namespace-anchor->namespace a))
 
 ;; ======================================================== ;;
-;; Memo                                                     ;;
+;; Syntax                                                   ;;
 ;; ======================================================== ;;
-(define table (make-hash))
-;; table: (rule-name stream) -> (value lr? lr-detected?)
+(define-syntax-rule (omatch omprog start input)
+  (interp/fresh-memo omprog (quote start) (construct-stream input) '()))
 
-(define (fresh-table!)
-  (set! table (make-hash)))
-
-(define (memo rule-name stream)
-  (hash-ref table (list rule-name stream) #f))
-
-(define (memo-add rule-name stream value [lr? #f] [lr-detected? #f])
-  (hash-set! table (list rule-name stream) (list value lr? lr-detected?)))
+(define-syntax-rule (ometa rule ...)
+  (desugar `(rule ...)))
 
 ;; ======================================================== ;;
 ;; Interpreter (match)                                      ;;
@@ -107,24 +74,11 @@
 (define (interp omprog start stream store)
   ;; -> (Value Stream Store)
   ;; -> ('FAIL fail-list Stream Store)
-  (define fresh-store (lambda () '()))
   (define rules (append omprog '()))
-  (define exp-name car)
-
-  (define (find-rule-by-name  name)
-    (cond
-     ((assoc name rules)
-      => (lambda (rule-pair) (cadr rule-pair)))
-     (else #f)))
-
-  (define (store->env a-list)
-    (define (quote-value binding)
-      (match binding
-        [(list id v) `(,id (quote ,v))]))
-    (map quote-value  a-list))
 
   (define (fail e stream store faillist)
-    ;; -> ('FAIL fail-list stream store) where `fail-list' is a list of (exp index top-of-stream-value)
+    ;; -> ('FAIL fail-list stream store)
+    ;;    `fail-list' is a list of (exp index top-of-stream-value)
     (cond
      ((empty? stream) (list 'FAIL (cons (list e 'END '_)      faillist) stream store))
      (else            (list 'FAIL (cons (cons e (car stream)) faillist) stream store))))
@@ -178,48 +132,33 @@
                                                    ;; not in left recursion
                                                    (m-value memo-entry))))
                 ;; cash miss
-                ((find-rule-by-name name) => (lambda (body)
-                                               (init-memo/fail-and-align-flags-for-planting-seed)
-                                               ;; eval the body but this time cash is guaranteed to be hit
-                                               ;; ans holds the seed to be grown if lr-detected is set
-                                               (let ((ans (e body stream (fresh-store)))
-                                                     (m (memo name stream)))
-                                                 ;; commit the seed to cash
-                                                 ;; drop lr flag, preserve lr-detected flag
-                                                 (memo-add name stream ans #f (m-lr-detected? m))
-                                                 (if (and (m-lr-detected? m)
-                                                          (not (fail? ans)))
-                                                     ;; left-recursion with seed, start growing
-                                                     (grow-lr body)
-                                                     ;; not in left recursion
-                                                     ans))))
+                ((find-rule-by-name name rules) => (lambda (body)
+                                                     (init-memo/fail-and-align-flags-for-planting-seed)
+                                                     ;; eval the body but this time cash is guaranteed to be hit
+                                                     ;; ans holds the seed to be grown if lr-detected is set
+                                                     (let ((ans (e body stream (fresh-store)))
+                                                           (m (memo name stream)))
+                                                       ;; commit the seed to cash
+                                                       ;; drop lr flag, preserve lr-detected flag
+                                                       (memo-add name stream ans #f (m-lr-detected? m))
+                                                       (if (and (m-lr-detected? m)
+                                                                (not (fail? ans)))
+                                                           ;; left-recursion with seed, start growing
+                                                           (grow-lr body)
+                                                           ;; not in left recursion
+                                                           ans))))
                 (else (error "no such rule " name))))))
       (reverse (cons (append (car r) store) (cdr r)))))
 
-  (define (append-old-store ans old-store)
-    (let* ((rev-ans (reverse ans))
-           (new-store (car rev-ans)))
-      (reverse (cons (append old-store new-store) (cdr rev-ans)))))
-
   (define (e exp stream store)
-    ;; -> ((index value) stream store)
+    ;; -> (value stream store)
     ;; -> ('FAIL fail-list stream store)
     (match
-      (case (exp-name exp)
+      (case (car exp)
         ((apply) (begin
-                   (when debug?
-                     (unless (equal? (cadr exp) 'anything)
-                       (printf "~a   |~a -stream ~v -store ~v\n"
-                               (list->string (build-list debug-count! (lambda (n) #\>)))
-                               (cadr exp) (de-index-list stream) store)
-                       (set! debug-count! (add1 debug-count!))))
+                   (debug-pre-apply (cadr exp) stream store)
                    (let ((ans (rule-apply (cadr exp) stream (fresh-store))))
-                     (when debug?
-                       (unless (equal? (cadr exp) 'anything)
-                         (set! debug-count! (sub1 debug-count!))
-                         (printf "~a   |~a -stream ~v -store ~v -ans ~v\n"
-                                 (list->string (build-list debug-count! (lambda (n) #\<)))
-                                 (cadr exp) (de-index-list stream) (append store (last ans)) (car ans))))
+                     (debug-post-apply (cadr exp) stream store ans)
                      (append-old-store ans store))))
 
         ((empty) (list 'NONE stream store))
@@ -300,17 +239,3 @@
   (define (desugar-rule r)
     (list (first r) (desugar-e (second r))))
   (map desugar-rule omprog))
-
-(define-syntax-rule (omatch omprog start input)
-  (interp/fresh-memo omprog (quote start) (construct-stream input) '()))
-
-(define-syntax-rule (ometa rule ...)
-  (desugar `(rule ...)))
-
-
-;; (omatch
-;;  (ometa
-;;   (Start (list (list (apply End))))
-;;   (End   (~ (apply anything))))
-;;  Start
-;;  input)
