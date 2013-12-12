@@ -208,6 +208,14 @@
                   (define result (eval `(let* ,(reverse env) ,code) ns))
                   (list result stream store)))
 
+        ((->?)   (begin
+                   (define env (store->env store))
+                   (define code (second exp))
+                   (define result (eval `(let* ,(reverse env) ,code) ns))
+                   (if result
+                       (list 'NONE stream store)
+                       (fail/empty stream store))))
+
         ((list) (begin
                   (define temprule (gensym "RULE"))
                   (define list-pattern (second exp))

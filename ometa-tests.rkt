@@ -48,6 +48,7 @@
               left-recursion-suite
               scoping-suite
               binding-suite
+              semantic-suite
               ))
 
 ;; ================================================= ;;
@@ -378,6 +379,52 @@
           _))
 
    ))
+
+;; ================================================= ;;
+;; Semantic actions and predicates                   ;;
+;; ================================================= ;;
+(define semantic-suite
+  (test-suite
+   "Actions and predicates"
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Lower-case word."
+    "abc"
+    (ometa
+     (char (seq* (bind c (apply anything))
+                 (->? (char? c))
+                 (-> c)))
+     (lower (seq* (bind c (apply char))
+                  (->? (char<=? #\a c #\z))
+                  (-> c)))
+     (end  (~ (apply anything)))
+     (Start (seq* (bind word (many (apply lower)))
+                  (apply end)
+                  (-> (list->string word)))))
+    (list "abc"
+          _
+          _))
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Lower-case word fail."
+    "abC"
+    (ometa
+     (char (seq* (bind c (apply anything))
+                 (->? (char? c))
+                 (-> c)))
+     (lower (seq* (bind c (apply char))
+                  (->? (char<=? #\a c #\z))
+                  (-> c)))
+     (end  (~ (apply anything)))
+     (Start (seq* (bind word (many (apply lower)))
+                  (apply end)
+                  (-> (list->string word)))))
+    ans
+    (fail? ans))))
+
+
 
 ;; ================================================= ;;
 ;; Run tests                                         ;;
