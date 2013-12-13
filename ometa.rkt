@@ -250,6 +250,12 @@
     [`(alt* ,e1 ,e2 ...) `(alt ,(desugar-e e1) ,(desugar-e `(alt* ,@e2)))]
     [`(many ,e1) `(many ,(desugar-e e1))]
     [`(many1 ,e1) `(many1 ,(desugar-e e1))]
+    [`(many+ ,e1) (let ((a (gensym '+a))
+                        (rest (gensym '+rest))
+                        (body (desugar-e e1)))
+                    (desugar-e `(seq* (bind ,a ,body)
+                                      (bind ,rest (many ,body))
+                                      (-> (cons ,a ,rest)))))]
     [`(bind ,id ,e1) `(bind ,id ,(desugar-e e1))]
     [`(~ ,e1) `(~ ,(desugar-e e1))]
     [`(list ,e1) `(list ,(desugar-e e1))]

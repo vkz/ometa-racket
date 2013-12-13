@@ -461,6 +461,22 @@
     ans
     (fail? ans))
 
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Parsing numbers (many+ digit)."
+    "234 "
+    (ometa
+     (char-range x y
+                 (seq* (bind c (apply anything))
+                       (->? (and (char? c)
+                                 (char<=? x c y)))
+                       (-> c)))
+     (digit (apply char-range #\0 #\9))
+     (Start (seq* (bind num (many+ (apply digit)))
+                  (-> (list->string num)))))
+    (list "234" _ _))
+
+
 ))
 
 
