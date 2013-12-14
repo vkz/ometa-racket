@@ -40,8 +40,14 @@
 (define table (make-hash))
 ;; table: (rule-name stream) -> (value lr? lr-detected?)
 
-(define (fresh-table!)
+(define (fresh-memo!)
   (set! table (make-hash)))
+
+(define (reset-memo! to)
+  (set! table to))
+
+(define (memo-copy)
+  (hash-copy table))
 
 (define (memo rule-name stream)
   (hash-ref table (list rule-name stream) #f))

@@ -69,7 +69,7 @@
 ;; Interpreter (match)                                      ;;
 ;; ======================================================== ;;
 (define (interp/fresh-memo omprog start-rule stream [store '()])
-  (fresh-table!)
+  (fresh-memo!)
   (interp omprog start-rule stream store))
 
 (define (interp omprog start stream store)
@@ -164,12 +164,17 @@
     ;; -> ('FAIL fail-list stream store)
     (match
       (case (car exp)
-        ((apply) (let ((rule-name (cadr exp))
-                       (rule-args (cddr exp)))
+        ((apply) (let* ((rule-name (cadr exp))
+                       (rule-args (cddr exp))
+                       (old-memo  (memo-copy))
+                       (memo-restore! (lambda () (reset-memo! old-memo))))
                    (debug-pre-apply rule-name stream store)
-                   (let ((ans
-                          (rule-apply rule-name rule-args stream (fresh-store))))
+                   (let ((ans (rule-apply rule-name rule-args stream (fresh-store))))
                      (debug-post-apply rule-name stream store ans)
+                     ;; restore the memo so that reapplying the same
+                     ;; parameterized rule with different arguments
+                     ;; in (alt (apply r 1) (apply r 2)) works
+                     (memo-restore!)
                      (append-old-store ans store))))
 
         ((empty) (list 'NONE stream store))

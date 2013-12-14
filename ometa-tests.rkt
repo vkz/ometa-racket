@@ -476,6 +476,55 @@
                   (-> (list->string num)))))
     (list "234" _ _))
 
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Invoking the same param-rule with different args in (alt ...)."
+    "aAbb AA"
+    (ometa
+     (char-range x y
+                 (seq* (bind c (apply anything))
+                       (->? (and (char? c)
+                                 (char<=? x c y)))
+                       (-> c)))
+     (letter (alt* (apply char-range #\a #\z)
+                   (apply char-range #\A #\Z)))
+     (Start (seq* (bind tok (many+ (apply letter)))
+              (-> (list->string tok)))))
+    (list "aAbb" _ _))
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Combine `scannerless' and `scannerful' parsing."
+    "  myVar =   56 "
+    (ometa
+     (eq  (seq* (atom #\=)
+                (-> (make-immutable-hash `((kind . =) (value . "="))))))
+     (num (seq* (bind ds (many+ (apply digit)))
+                (-> (make-immutable-hash `((kind . num) (value . ,(list->string ds)))))))
+     (id  (seq* (bind ls (many+ (apply letter)))
+                (-> (make-immutable-hash `((kind . id) (value . ,(list->string ls)))))))
+     (char-range x y
+                 (seq* (bind c (apply anything))
+                       (->? (and (char? c)
+                                 (char<=? x c y)))
+                       (-> c)))
+     (digit (apply char-range #\0 #\9))
+     (letter (alt* (apply char-range #\a #\z)
+                   (apply char-range #\A #\Z)))
+     (spaces (many+ (atom #\space)))
+     (scanner (seq* (apply spaces)
+                    (alt* (apply eq)
+                          (apply num)
+                          (apply id))))
+     (token k (seq* (bind t (apply scanner))
+                    (->? (equal? (hash-ref t 'kind #f) k))
+                    (-> (hash-ref t 'value))))
+     (Start (seq* (bind a (apply token 'id))
+                  (bind b (apply token '=))
+                  (bind c (apply token 'num))
+                  (-> (string-append a b c))))
+     )
+    (list "myVar=56" _ _))
 
 ))
 
