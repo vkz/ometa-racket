@@ -164,17 +164,30 @@
     ;; -> ('FAIL fail-list stream store)
     (match
       (case (car exp)
+        ;; Inheritance and foreign invocation:
+        ;; ---------------------------------- ;;
+        ;; rule-name: symbol or (^ symbol) or (^ symbol parser)
+        ;;
+        ;; symbol          -> current semantics
+        ;; (^ name parser) -> (interp/fresh-memo
+        ;;                     (cons `(rule-gensym (apply ,name ,@rule-args)) parser) rule-gensym stream (fresh-store))
+        ;; (^ name)        -> (^ name parent)
+
         ((apply) (let* ((rule-name (cadr exp))
                        (rule-args (cddr exp))
                        (old-memo  (memo-copy))
-                       (memo-restore! (lambda () (reset-memo! old-memo))))
+                       (memo-restore! (lambda () (reset-memo! old-memo)))
+                       (old-stream stream))
                    (debug-pre-apply rule-name stream store)
                    (let ((ans (rule-apply rule-name rule-args stream (fresh-store))))
                      (debug-post-apply rule-name stream store ans)
+                     ;; unless applying a left-recursive rule (growing)
                      ;; restore the memo so that reapplying the same
                      ;; parameterized rule with different arguments
                      ;; in (alt (apply r 1) (apply r 2)) works
-                     (memo-restore!)
+                     (unless (and (memo rule-name stream)
+                                  (m-lr-detected? (memo rule-name stream)))
+                       (memo-restore!))
                      (append-old-store ans store))))
 
         ((empty) (list 'NONE stream store))
