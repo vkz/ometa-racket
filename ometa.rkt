@@ -5,6 +5,8 @@
          desugar
          desugar-e
          ometa
+         define-ometa
+         define-ometa-namespace
          omatch)
 
 ;; ======================================================== ;;
@@ -15,14 +17,26 @@
 ;;    (define test-program
 ;;      (ometa
 ;;       (rule-name parsing-expression) ...))
+;; or
+;;    (define-ometa test-program
+;;      (rule-name parsing-expression) ...)
 ;;
 ;; 2. Run it:
 ;;
 ;;     (omatch test-program
 ;;             starting-rule-name
-;;             input)
+;;             input
+;;             namespace)
 ;;
 ;;    Where input is a string or a list.
+;;    Namespace is optional.
+;;
+;; 3. If you need bindings external to OMeta or invoke rules
+;;    from other OMeta programs:
+;;
+;;    (define-ometa-namespace ns)
+;;
+;;    and pass `ns' as the last argument to `omatch'
 
 ;; ======================================================== ;;
 ;; Grammar                                                  ;;
@@ -51,6 +65,8 @@
 ;;
 ;; store == ((symbol? Value) ...)
 
+(debug-off!)
+
 ;; reflective hook to reel the module namespace
 ;; must insert this into user-code before interpreting
 ;; otherwise `eval' won't have bindings from user top-level
@@ -60,20 +76,31 @@
 ;; ======================================================== ;;
 ;; Syntax                                                   ;;
 ;; ======================================================== ;;
-(define-syntax-rule (omatch omprog start input)
-  (interp/fresh-memo omprog (quote start) (construct-stream input) '()))
+(define-syntax omatch
+  (syntax-rules ()
+    [(_ omprog start input ns) ;;=>
+     (interp/fresh-memo omprog (quote start) (construct-stream input) '() ns)]
+    [(_ omprog start input) ;;=>
+     (interp/fresh-memo omprog (quote start) (construct-stream input) '())]))
 
 (define-syntax-rule (ometa rule ...)
   (desugar `(rule ...)))
 
+(define-syntax-rule (define-ometa name rule ...)
+  (define name (desugar `(rule ...))))
+
+(define-syntax-rule (define-ometa-namespace ns-name)
+  (begin (define-namespace-anchor a)
+         (define ns-name (namespace-anchor->namespace a))))
+
 ;; ======================================================== ;;
 ;; Interpreter (match)                                      ;;
 ;; ======================================================== ;;
-(define (interp/fresh-memo omprog start-rule stream [store '()])
+(define (interp/fresh-memo omprog start-rule stream [store '()] [ns ns])
   (fresh-memo!)
-  (interp omprog start-rule stream store))
+  (interp omprog start-rule stream store ns))
 
-(define (interp omprog start stream store)
+(define (interp omprog start stream store ns)
   ;; -> (Value Stream Store)
   ;; -> ('FAIL fail-list Stream Store)
   (define rules (append omprog '()))
@@ -191,7 +218,7 @@
                                     ;; to be evaled in current ns to bind it
                                     ;; to a foreign ometa definition
                                     (eval from-ometa ns))
-                              rule-name-temp stream (fresh-store))]
+                              rule-name-temp stream (fresh-store) ns)]
                             [rule-name ;;=>
                              (rule-apply rule-name rule-args stream (fresh-store))])))
                      ;; unless applying a left-recursive rule (growing)
@@ -259,7 +286,7 @@
                       (fail/empty stream store)
                       (match (car stream)
                         [(list pos (? stream? substream))
-                         (match (interp subprog temprule substream store)
+                         (match (interp subprog temprule substream store ns)
                            [(list val (? empty? s) st) (list (de-index-list substream) (cdr stream) st)]
                            [(list 'FAIL faillist s st) (list 'FAIL (cdr faillist) s st)] ;don't report `(apply temprule)'
                            [substream-is-too-long (fail/empty stream store)])]
@@ -326,33 +353,3 @@
 ;; ======================================================== ;;
 ;; Playground                                               ;;
 ;; ======================================================== ;;
-
-;; (define std
-;;   (ometa
-;;    (char (seq* (bind c (apply anything))
-;;                (->? (char? c))
-;;                (-> c)))
-;;    (char-range x y
-;;                (seq* (bind c (apply anything))
-;;                      (->? (and (char? c)
-;;                                (char<=? x c y)))
-;;                      (-> c)))
-;;    (letter (alt* (apply char-range #\a #\z)
-;;                  (apply char-range #\A #\Z)))
-;;    (digit (apply char-range #\0 #\9))
-;;    (number (many+ (apply digit)))
-;;    (spaces (many+ (atom #\space)))))
-
-;; (define token
-;;   (ometa
-;;    (letter (alt* (atom #\_)
-;;                  (apply (^ letter std))))
-;;    (id (many+ (apply letter)))
-;;    (number (alt* (seq* (bind pre (apply (^ number std)))
-;;                        (atom #\.)
-;;                        (bind post (apply (^ number std)))
-;;                        (-> `(,@pre #\. ,@post)))
-;;                  (apply (^ number std))))))
-
-;; (omatch token id "hello_Id")
-;; (omatch token number "57.877")

@@ -21,11 +21,13 @@
 ;; ===========================
 ;; Add your suits to (run-suites ...)
 
+(define-ometa-namespace ns)
+
 (define-syntax om-test-case
   (syntax-rules ()
     [(_ case-name input omprog . template)
      (test-case case-name
-                (check-match (omatch omprog Start input)
+                (check-match (omatch omprog Start input ns)
                              . template))]))
 
 (define-syntax-rule (run-suites suite ...)
@@ -50,6 +52,7 @@
               binding-suite
               semantic-suite
               parameterized-rules-suite
+              oo-suite
               ))
 
 ;; ================================================= ;;
@@ -528,6 +531,69 @@
 
 ))
 
+;; ================================================= ;;
+;; Suite: Inheritance and foreign rules              ;;
+;; ================================================= ;;
+
+;; Must have (define-ometa-namespace ns) at top level.
+;; Test-cases will extend rules from these definitions.
+(define-ometa std
+  (char (seq* (bind c (apply anything))
+              (->? (char? c))
+              (-> c)))
+  (char-range x y
+              (seq* (bind c (apply anything))
+                    (->? (and (char? c)
+                              (char<=? x c y)))
+                    (-> c)))
+  (letter (alt* (apply char-range #\a #\z)
+                (apply char-range #\A #\Z)))
+  (digit (apply char-range #\0 #\9))
+  (number (many+ (apply digit)))
+  (spaces (many+ (atom #\space))))
+
+(define-ometa chars
+  (char-range x y
+              (seq* (bind c (apply anything))
+                    (->? (and (char? c)
+                              (char<=? x c y)))
+                    (-> c))))
+
+(define-ometa letters
+  (letter (alt* (apply (^ char-range chars) #\a #\z)
+                (apply (^ char-range chars) #\A #\Z))))
+
+(define oo-suite
+  (test-suite
+   "Inheritance and foreign rules."
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Foreign: extend letters with _."
+    "hello_Id"
+    (ometa
+     (letter (alt* (atom #\_)
+                   (apply (^ letter std))))
+     (Start (many+ (apply letter))))
+    (list '(#\h #\e #\l #\l #\o #\_ #\I #\d) _ _))
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Foreign: invoking rules with arguments."
+    "F"
+    (ometa
+     (Start (alt* (apply (^ char-range chars) #\a #\z)
+                  (apply (^ char-range chars) #\A #\Z))))
+    (list #\F _ _))
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Foreign: nested foreign invocation."
+    "uhFHa"
+    (ometa
+     (Start (many+ (apply (^ letter letters)))))
+    (list '(#\u #\h #\F #\H #\a) _ _))
+   ))
 
 ;; ================================================= ;;
 ;; Run tests                                         ;;
