@@ -1,5 +1,6 @@
 #lang racket
-(require "helpers.rkt")
+(require "helpers.rkt"
+         racket/trace)
 (provide interp
          desugar
          desugar-e
@@ -159,6 +160,8 @@
                (else (error "no such rule " name))))))
       (reverse (cons (append (car r) store) (cdr r)))))
 
+  ;; (trace rule-apply)
+
   (define (e exp stream store)
     ;; -> (value stream store)
     ;; -> ('FAIL fail-list stream store)
@@ -173,21 +176,32 @@
         ;;                     (cons `(rule-gensym (apply ,name ,@rule-args)) parser) rule-gensym stream (fresh-store))
         ;; (^ name)        -> (^ name parent)
 
-        ((apply) (let* ((rule-name (cadr exp))
-                       (rule-args (cddr exp))
-                       (old-memo  (memo-copy))
-                       (memo-restore! (lambda () (reset-memo! old-memo)))
-                       (old-stream stream))
-                   (debug-pre-apply rule-name stream store)
-                   (let ((ans (rule-apply rule-name rule-args stream (fresh-store))))
-                     (debug-post-apply rule-name stream store ans)
+        ((apply) (let* ((rule-expr (cadr exp))
+                        (rule-name-temp (gensym '^rule))
+                        (rule-args (cddr exp))
+                        (old-memo  (memo-copy))
+                        (memo-restore! (lambda () (reset-memo! old-memo))))
+                   (debug-pre-apply rule-expr stream store)
+                   (let ((ans
+                          (match rule-expr
+                            [`(^ ,name ,from-ometa) ;;=>
+                             (interp/fresh-memo
+                              (cons `(,rule-name-temp (apply ,name ,@rule-args))
+                                    ;; from-ometa is just a symbol that needs
+                                    ;; to be evaled in current ns to bind it
+                                    ;; to a foreign ometa definition
+                                    (eval from-ometa ns))
+                              rule-name-temp stream (fresh-store))]
+                            [rule-name ;;=>
+                             (rule-apply rule-name rule-args stream (fresh-store))])))
                      ;; unless applying a left-recursive rule (growing)
                      ;; restore the memo so that reapplying the same
                      ;; parameterized rule with different arguments
                      ;; in (alt (apply r 1) (apply r 2)) works
-                     (unless (and (memo rule-name stream)
-                                  (m-lr-detected? (memo rule-name stream)))
+                     (unless (and (memo rule-expr stream)
+                                  (m-lr-detected? (memo rule-expr stream)))
                        (memo-restore!))
+                     (debug-post-apply rule-expr stream store ans)
                      (append-old-store ans store))))
 
         ((empty) (list 'NONE stream store))
@@ -307,3 +321,38 @@
             ;; =>
             (error "Bad syntax in rule " rule)])))
    (else #f)))
+
+
+;; ======================================================== ;;
+;; Playground                                               ;;
+;; ======================================================== ;;
+
+;; (define std
+;;   (ometa
+;;    (char (seq* (bind c (apply anything))
+;;                (->? (char? c))
+;;                (-> c)))
+;;    (char-range x y
+;;                (seq* (bind c (apply anything))
+;;                      (->? (and (char? c)
+;;                                (char<=? x c y)))
+;;                      (-> c)))
+;;    (letter (alt* (apply char-range #\a #\z)
+;;                  (apply char-range #\A #\Z)))
+;;    (digit (apply char-range #\0 #\9))
+;;    (number (many+ (apply digit)))
+;;    (spaces (many+ (atom #\space)))))
+
+;; (define token
+;;   (ometa
+;;    (letter (alt* (atom #\_)
+;;                  (apply (^ letter std))))
+;;    (id (many+ (apply letter)))
+;;    (number (alt* (seq* (bind pre (apply (^ number std)))
+;;                        (atom #\.)
+;;                        (bind post (apply (^ number std)))
+;;                        (-> `(,@pre #\. ,@post)))
+;;                  (apply (^ number std))))))
+
+;; (omatch token id "hello_Id")
+;; (omatch token number "57.877")
