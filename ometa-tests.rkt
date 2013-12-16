@@ -593,6 +593,35 @@
     (ometa
      (Start (many+ (apply (^ letter letters)))))
     (list '(#\u #\h #\F #\H #\a) _ _))
+
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Inheritance: extend letters with _."
+    "hello_Id"
+    (ometa (<< std)
+     (letter (alt* (atom #\_)
+                   (apply (^ letter))))
+     (Start (many+ (apply letter))))
+    (list '(#\h #\e #\l #\l #\o #\_ #\I #\d) _ _))
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Inheritance: invoking rules with arguments."
+    "F"
+    (ometa (<< chars)
+     (Start (alt* (apply (^ char-range) #\a #\z)
+                  (apply (^ char-range) #\A #\Z))))
+    (list #\F _ _))
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Inherintance: nested foreign invocation."
+    "uhFHa"
+    (ometa (<< letters)
+     (Start (many+ (apply (^ letter)))))
+    (list '(#\u #\h #\F #\H #\a) _ _))
+
    ))
 
 ;; ================================================= ;;

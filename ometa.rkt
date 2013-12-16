@@ -83,11 +83,19 @@
     [(_ omprog start input) ;;=>
      (interp/fresh-memo omprog (quote start) (construct-stream input) '())]))
 
-(define-syntax-rule (ometa rule ...)
-  (desugar `(rule ...)))
+;; (define-syntax-rule (ometa rule ...)
+;;   (desugar `(rule ...)))
+
+(define-syntax ometa
+  (syntax-rules (<<)
+    [(_ (<< parent ...) rule ...) (desugar `(rule ...) `(parent ...)) ]
+    [(_ rule ...) (desugar `(rule ...))]))
+
+;; (define-syntax-rule (define-ometa name rule ...)
+;;   (define name (desugar `(rule ...))))
 
 (define-syntax-rule (define-ometa name rule ...)
-  (define name (desugar `(rule ...))))
+  (define name (ometa rule ...)))
 
 (define-syntax-rule (define-ometa-namespace ns-name)
   (begin (define-namespace-anchor a)
@@ -194,23 +202,13 @@
     ;; -> ('FAIL fail-list stream store)
     (match
       (case (car exp)
-        ;; Inheritance and foreign invocation:
-        ;; ---------------------------------- ;;
-        ;; rule-name: symbol or (^ symbol) or (^ symbol parser)
-        ;;
-        ;; symbol          -> current semantics
-        ;; (^ name parser) -> (interp/fresh-memo
-        ;;                     (cons `(rule-gensym (apply ,name ,@rule-args)) parser) rule-gensym stream (fresh-store))
-        ;; (^ name)        -> (^ name parent)
-
         ((apply) (let* ((rule-expr (cadr exp))
                         (rule-name-temp (gensym '^rule))
                         (rule-args (cddr exp))
                         (old-memo  (memo-copy))
                         (memo-restore! (lambda () (reset-memo! old-memo))))
                    (debug-pre-apply rule-expr stream store)
-                   (let ((ans
-                          (match rule-expr
+                   (let ((ans (match rule-expr
                             [`(^ ,name ,from-ometa) ;;=>
                              (interp/fresh-memo
                               (cons `(,rule-name-temp (apply ,name ,@rule-args))
@@ -297,35 +295,39 @@
       [result result]))
   (e `(apply ,start) stream store))
 
-(define (desugar-e e)
+(define (desugar-e e [inheritance-chain '()])
+  (define i inheritance-chain)
   (match e
     ;; seq* into nested seq
-    [`(seq* ,e1) (desugar-e e1)]
-    [`(seq* ,e1 ,e2) `(seq ,(desugar-e e1) ,(desugar-e e2))]
-    [`(seq* ,e1 ,e2 ...) `(seq ,(desugar-e e1) ,(desugar-e `(seq* ,@e2)))]
+    [`(seq* ,e1) (desugar-e e1 i)]
+    [`(seq* ,e1 ,e2) `(seq ,(desugar-e e1 i) ,(desugar-e e2 i))]
+    [`(seq* ,e1 ,e2 ...) `(seq ,(desugar-e e1 i) ,(desugar-e `(seq* ,@e2) i))]
     ;; alt* into nested alt
-    [`(alt* ,e1) (desugar-e e1)]
-    [`(alt* ,e1 ,e2) `(alt ,(desugar-e e1) ,(desugar-e e2))]
-    [`(alt* ,e1 ,e2 ...) `(alt ,(desugar-e e1) ,(desugar-e `(alt* ,@e2)))]
-    [`(many ,e1) `(many ,(desugar-e e1))]
-    [`(many1 ,e1) `(many1 ,(desugar-e e1))]
+    [`(alt* ,e1) (desugar-e e1 i)]
+    [`(alt* ,e1 ,e2) `(alt ,(desugar-e e1 i) ,(desugar-e e2 i))]
+    [`(alt* ,e1 ,e2 ...) `(alt ,(desugar-e e1 i) ,(desugar-e `(alt* ,@e2) i))]
+    [`(many ,e1) `(many ,(desugar-e e1 i))]
+    [`(many1 ,e1) `(many1 ,(desugar-e e1 i))]
     [`(many+ ,e1) (let ((a (gensym '+a))
                         (rest (gensym '+rest))
-                        (body (desugar-e e1)))
+                        (body (desugar-e e1 i)))
                     (desugar-e `(seq* (bind ,a ,body)
                                       (bind ,rest (many ,body))
-                                      (-> (cons ,a ,rest)))))]
-    [`(bind ,id ,e1) `(bind ,id ,(desugar-e e1))]
-    [`(~ ,e1) `(~ ,(desugar-e e1))]
-    [`(list ,e1) `(list ,(desugar-e e1))]
+                                      (-> (cons ,a ,rest)))
+                               i))]
+    ;; inheritance
+    [`(apply (^ ,rule-name) ,args ...) `(apply (^ ,rule-name ,@i) ,@args)]
+    [`(bind ,id ,e1) `(bind ,id ,(desugar-e e1 i))]
+    [`(~ ,e1) `(~ ,(desugar-e e1 i))]
+    [`(list ,e1)`(list ,(desugar-e e1 i))]
     [rest rest]))
 
-(define (desugar omprog)
+(define (desugar omprog [inheritance-chain '()])
   (define (desugar-rule rule)
     (match rule
       [(list name ids ... body)
        ;; =>
-       `(,name ,@ids ,(desugar-e body))]
+       `(,name ,@ids ,(desugar-e body inheritance-chain))]
       [_
        ;; =>
        (error "Bad syntax in rule " rule)]))
