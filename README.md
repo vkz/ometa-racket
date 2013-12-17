@@ -1,14 +1,14 @@
 ## ometa-racket
 
-is an experimental implementation of *OMeta* with [Racket][racket] as a host. An object-oriented language for pattern-matching *OMeta* is a beautiful instrument for experimenting with designs for programming languages - a convenient way to implement lexers, parsers, tree-transformers and extensions thereof.
+is an experimental implementation of OMeta with [Racket][racket] as a host. An object-oriented language for pattern-matching OMeta is a beautiful instrument for experimenting with designs for programming languages - a convenient way to implement lexers, parsers, tree-transformers and extensions thereof.
 
 From [original 2007 paper][07] by **_Alessandro Warth_** and **_Ian Piumarta_**:
 >_OMeta, a new object-oriented language for pattern matching.
 > OMeta is based on a variant of Parsing Expression Grammars (PEGs) -
-> a recognition-based foundation for describing syntax-which we have
+> a recognition-based foundation for describing syntax - which we have
 > extended to handle arbitrary kinds of data._
 
-This is a recursive interpreter that closely follows operational semantics described in Alessandro Warth's [Dissertation'09][09] with core OMeta grammar represented as tagged list. I deliberately take a simplistic approach with this very much experimental implementation, yet it does deliver most of the features you'd expect having read original papers:
+This here is a recursive interpreter that closely follows operational semantics described in Alessandro Warth's 2009 [dissertation][09]. It dispatches on tagged lists that represent core  OMeta grammar - a deliberately simpleminded approach. Think *exploratory* programming one to help you grok and intern ideas. Toy or not you'll find most features you'd expect having read original papers:
 
 * matching on strings
 * matching on structured data (lists)
@@ -23,7 +23,7 @@ This is a recursive interpreter that closely follows operational semantics descr
 
 ## Install
 
-given experimental nature of this repo it's unlikely to make appearance in Racket packages or collections. Simply clone it and make and require it from your source files. Assuming your ometa-racket files and your source are in the same directory:
+given the experimental nature of this repo it is unlikely to make appearance in Racket packages or collections. Simply clone it and and require *ometa.rkt* from your source files. Assuming your ometa-racket files and your source file are in the same directory:
 
 ```racket
 #lang racket
@@ -33,14 +33,12 @@ _**Warning:** This implementation is experimental and incomplete. Everything is 
 
 ## Play
 
-You should be able to run these code snippets without a problem.
-
-### Syntax
+#### Syntax
 Technically ometa-racket has enough meat to write a lexer+parser combo for OMeta proper, which uses C-like syntax. I'm working on it. Until then we'll stick with s-expressions. After all you're browsing Racket code, so I assume it's not a problem. Some of you may even notice just how much ometa-racket code resembles Olin Shivers' [SRE regular-expression notation][sre]. Such is the power of truly beautiful ideas - we keep reinventing them.
 
-OMeta code is a first-class value, which you can bind to variables, pass as arguments and return as results or close over in data.
+##### `ometa`
 
-Wrap OMeta code in *ometa* form and bind it to a variable.
+OMeta code is a first-class value, which you can bind to variables, pass around and close over in data:
 
 ```racket
 (define test-program
@@ -49,7 +47,9 @@ Wrap OMeta code in *ometa* form and bind it to a variable.
           ...))
 ```
 
-Or use a shorthand notation.
+##### `define-ometa`
+
+Or use a shorthand notation:
 
 ```racket
 (define-ometa test-program
@@ -57,7 +57,9 @@ Or use a shorthand notation.
               ...)
 ```
 
-Match against a stream. Stream can be a string or a list. For now these are not lazy sequences and will be fully consumed before matching. Namespace argument is optional.
+##### `omatch`
+
+Match against a stream. Stream can be a string or a list. For now these are not lazy sequences and will be fully consumed before matching. Namespace argument is optional:
 
 ```racket
 (omatch test-program
@@ -65,23 +67,21 @@ Match against a stream. Stream can be a string or a list. For now these are not 
         stream
         namespace)
 ```
+##### `define-ometa-namespace`
 
-If you want to refer to your top-level bindings from OMeta code make sure you extend its namespace. Don't forget to pass it to *omatch*. You definitely want this if you want to inherit from other parsers or invoke foreign rules.
+If you want to refer to your top-level bindings from OMeta extend its namespace. Don't forget to pass it to *omatch*. You definitely want this when inheriting from other parsers or invoking foreign rules:
 
 ```racket
 (define-ometa-namespace ns)
 ```
 
-### Examples
+#### Examples
 
-Without a standard library we'd have to tediously copy/paste the most basic rules to every OMeta project. Let's not do that! Why else have inheritance and access to foreign rules.
+Without a standard library we'd have to tediously copy/paste the most basic rules to every OMeta project. Let's not do that! Why else have inheritance and access to foreign rules:
 
 ```racket
 #lang racket
-(require "ometa.rkt"
-         "helpers.rkt")
-
-(debug-off!)
+(require "ometa.rkt")
 
 ;; a reflective hook so that you have access
 ;; to your top-level bindings from ometa code
@@ -91,6 +91,8 @@ Without a standard library we'd have to tediously copy/paste the most basic rule
   (char (seq* (bind c (apply anything))
               (->? (char? c))
               (-> c)))
+  ;; why bake character-classes into a language when
+  ;; its so expressive that adding them is trivial
   (char-range x y
               (seq* (bind c (apply anything))
                     (->? (and (char? c)
@@ -101,11 +103,7 @@ Without a standard library we'd have to tediously copy/paste the most basic rule
   (digit (apply char-range #\0 #\9))
   (number (many+ (apply digit)))
   (spaces (many+ (atom #\space))))
-
-;; --------------------------------------------
 ```
-
-
 
 
 ## Test
