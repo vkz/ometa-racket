@@ -209,16 +209,18 @@
                         (memo-restore! (lambda () (reset-memo! old-memo))))
                    (debug-pre-apply rule-expr stream store)
                    (let ((ans (match rule-expr
-                            [`(^ ,name ,from-ometa) ;;=>
-                             (interp/fresh-memo
-                              (cons `(,rule-name-temp (apply ,name ,@rule-args))
-                                    ;; from-ometa is just a symbol that needs
-                                    ;; to be evaled in current ns to bind it
-                                    ;; to a foreign ometa definition
-                                    (eval from-ometa ns))
-                              rule-name-temp stream (fresh-store) ns)]
-                            [rule-name ;;=>
-                             (rule-apply rule-name rule-args stream (fresh-store))])))
+                                ;; inheritance or foreign invocation
+                                [`(^ ,name ,from-ometa) ;;=>
+                                 (interp/fresh-memo
+                                  (cons `(,rule-name-temp (apply ,name ,@rule-args))
+                                        ;; from-ometa is just a symbol that needs
+                                        ;; to be evaled in current ns to bind it
+                                        ;; to a foreign ometa definition
+                                        (eval from-ometa ns))
+                                  rule-name-temp stream (fresh-store) ns)]
+                                ;; simple case - no calls to foreign ometa programs
+                                [rule-name ;;=>
+                                 (rule-apply rule-name rule-args stream (fresh-store))])))
                      ;; unless applying a left-recursive rule (growing)
                      ;; restore the memo so that reapplying the same
                      ;; parameterized rule with different arguments

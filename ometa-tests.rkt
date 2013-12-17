@@ -563,6 +563,8 @@
   (letter (alt* (apply (^ char-range chars) #\a #\z)
                 (apply (^ char-range chars) #\A #\Z))))
 
+(define char->number (compose string->number list->string list))
+
 (define oo-suite
   (test-suite
    "Inheritance and foreign rules."
@@ -621,6 +623,20 @@
     (ometa (<< letters)
      (Start (many+ (apply (^ letter)))))
     (list '(#\u #\h #\F #\H #\a) _ _))
+
+   ;; ------------------------------------------ ;;
+   (om-test-case
+    "Inheritance: left-recursive rule."
+    "567"
+    (ometa (<< std)
+           (num (alt* (seq* (bind n (apply num))
+                            (bind d (apply (^ digit)))
+                            (-> (+ (* n 10) (char->number d))))
+                      (seq* (bind d (apply (^ digit)))
+                            (-> (char->number d)))))
+           (Start (apply num)))
+    (list 567 _ _))
+
 
    ))
 
